@@ -210,8 +210,10 @@ function ChatRoom({ channel }) {
     const dummy = useRef();
     const messagesRef = firestore.collection('messages');
     
-    // Use proper query with orderBy to ensure messages are sorted by creation time
-    const query = messagesRef.orderBy('createdAt').limit(25);
+    // Use proper query to get the most recent messages
+    // Order by createdAt descending to get newest first, then limit to 50
+    // Note: Firebase has a limit of 25 by default, but we can increase it
+    const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
 
     const [messages] = useCollectionData(query, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
@@ -263,15 +265,18 @@ function ChatRoom({ channel }) {
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Filter messages for the current channel
-    const filteredMessages = messages ? messages.filter(msg => {
-        // If message has channel property, filter by it
-        if (msg.channel) {
-            return msg.channel === channel;
-        }
-        // If message doesn't have channel property (old messages), show in general
-        return channel === 'general';
-    }) : [];
+    // Filter messages for the current channel and reverse to show chronological order
+    const filteredMessages = messages ? messages
+        .filter(msg => {
+            // If message has channel property, filter by it
+            if (msg.channel) {
+                return msg.channel === channel;
+            }
+            // If message doesn't have channel property (old messages), show in general
+            return channel === 'general';
+        })
+        .reverse() // Reverse to show oldest to newest (chronological order)
+        : [];
 
     console.log('Filtered messages count:', filteredMessages.length);
     console.log('Filtered messages:', filteredMessages);
@@ -279,8 +284,10 @@ function ChatRoom({ channel }) {
     // Debug: Check if messages have the required properties
     if (filteredMessages.length > 0) {
         console.log('First filtered message:', filteredMessages[0]);
+        console.log('Last filtered message:', filteredMessages[filteredMessages.length - 1]);
         console.log('Message has text:', !!filteredMessages[0].text);
         console.log('Message has id:', !!filteredMessages[0].id);
+        console.log('Total messages in database:', messages ? messages.length : 0);
     }
 
     return (
