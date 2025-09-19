@@ -144,6 +144,7 @@ function DiscordLayout() {
     const [selectedChannel, setSelectedChannel] = useState('general');
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
+    const [readChannels, setReadChannels] = useState(new Set(['general'])); // Start with general as read
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
@@ -155,19 +156,37 @@ function DiscordLayout() {
         ...doc.data()
     })) || [];
     
-    // Clear indicators when switching channels
+    // Mark channel as read when switching to it
     React.useEffect(() => {
-        setUnreadChannels(prev => {
+        setReadChannels(prev => {
             const newSet = new Set(prev);
-            newSet.delete(selectedChannel);
-            return newSet;
-        });
-        setMentionedChannels(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(selectedChannel);
+            newSet.add(selectedChannel);
             return newSet;
         });
     }, [selectedChannel]);
+
+    // Reset read status when new messages arrive (so indicators can appear again)
+    React.useEffect(() => {
+        if (!indicatorMessages || !auth.currentUser) return;
+        
+        const currentUser = auth.currentUser;
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        
+        // Check if there are new messages from other users
+        const hasNewMessages = indicatorMessages.some(msg => {
+            const messageTime = msg.createdAt?.toDate();
+            return messageTime && messageTime > tenMinutesAgo && msg.uid !== currentUser.uid;
+        });
+        
+        if (hasNewMessages) {
+            // Reset read status for channels with new activity
+            setReadChannels(prev => {
+                const newSet = new Set(prev);
+                // Only keep the currently selected channel as read
+                return new Set([selectedChannel]);
+            });
+        }
+    }, [indicatorMessages, selectedChannel]);
 
     // Check for mentions and unread messages
     React.useEffect(() => {
@@ -187,6 +206,9 @@ function DiscordLayout() {
             // Only process recent messages
             if (!messageTime || messageTime < tenMinutesAgo) return;
             
+            // Skip if channel has been read
+            if (readChannels.has(channel)) return;
+            
             // Check if message is unread (only if it's not from current user)
             if (msg.uid !== currentUser.uid) {
                 newUnreadChannels.add(channel);
@@ -204,6 +226,7 @@ function DiscordLayout() {
         console.log('🔔 Channel indicators update:', {
             unreadChannels: Array.from(newUnreadChannels),
             mentionedChannels: Array.from(newMentionedChannels),
+            readChannels: Array.from(readChannels),
             selectedChannel,
             totalMessages: indicatorMessages.length,
             recentMessages: indicatorMessages.filter(msg => {
@@ -215,7 +238,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages, selectedChannel]);
+    }, [indicatorMessages, readChannels]);
     
     return (
         <>
