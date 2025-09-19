@@ -6,7 +6,7 @@ import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { useCollectionData } from 'react-firebase-hooks/firestore';
+import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore';
 
 firebase.initializeApp({
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -216,12 +216,19 @@ function ChatRoom({ channel }) {
     // Note: Firebase has a limit of 25 by default, but we can increase it
     const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
 
-    const [messages] = useCollectionData(query, { idField: 'id' });
+    const [messagesSnapshot, loading, error] = useCollection(query);
+    
+    // Convert snapshot to data with IDs
+    const messages = messagesSnapshot?.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    })) || [];
     
     // Debug: Check if messages have IDs
     React.useEffect(() => {
         if (messages && messages.length > 0) {
             console.log('🔍 Message IDs check:', messages.map(msg => ({ id: msg.id, text: msg.text?.substring(0, 20) })));
+            console.log('🔍 First message full object:', messages[0]);
         }
     }, [messages]);
     const [formValue, setFormValue] = useState('');
@@ -747,45 +754,44 @@ function ChatMessage({ message }) {
                         ))}
                     </div>
                 )}
-                
-                {/* Add Reaction Button - Only show on hover */}
-                <div className="message-actions">
-                    <button 
-                        className="add-reaction-btn"
-                        onClick={() => setShowReactionPicker(!showReactionPicker)}
-                        title="Add Reaction"
-                    >
-                        <span className="reaction-icon">😀</span>
-                        <span className="reaction-text">React</span>
-                    </button>
-                </div>
-                
-                {/* Reaction Picker */}
-                {showReactionPicker && (
-                    <div className="reaction-picker" ref={reactionPickerRef}>
-                        <div className="reaction-picker-header">
-                            <span>Add Reaction</span>
-                            <button 
-                                className="close-picker"
-                                onClick={() => setShowReactionPicker(false)}
-                            >
-                                ×
-                            </button>
-                        </div>
-                        <div className="reaction-picker-emojis">
-                            {commonEmojis.map(emoji => (
-                                <button
-                                    key={emoji}
-                                    className="reaction-picker-emoji"
-                                    onClick={() => toggleReaction(emoji)}
-                                >
-                                    {emoji}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
+            
+            {/* Add Reaction Button - Side of message */}
+            <div className="message-actions">
+                <button 
+                    className="add-reaction-btn"
+                    onClick={() => setShowReactionPicker(!showReactionPicker)}
+                    title="Add Reaction"
+                >
+                    <span className="reaction-icon">😀</span>
+                </button>
+            </div>
+            
+            {/* Reaction Picker */}
+            {showReactionPicker && (
+                <div className="reaction-picker" ref={reactionPickerRef}>
+                    <div className="reaction-picker-header">
+                        <span>Add Reaction</span>
+                        <button 
+                            className="close-picker"
+                            onClick={() => setShowReactionPicker(false)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                    <div className="reaction-picker-emojis">
+                        {commonEmojis.map(emoji => (
+                            <button
+                                key={emoji}
+                                className="reaction-picker-emoji"
+                                onClick={() => toggleReaction(emoji)}
+                            >
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

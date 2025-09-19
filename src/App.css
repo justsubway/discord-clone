@@ -438,7 +438,10 @@ html, body {
 .message-actions {
   opacity: 0;
   transition: opacity 0.15s ease;
-  margin-top: 4px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -451,33 +454,27 @@ html, body {
 .add-reaction-btn {
   display: flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
   background: transparent;
   border: none;
-  color: #8e9297;
+  color: #72767d;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 4px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 14px;
   transition: all 0.15s ease;
   font-weight: 400;
-  opacity: 0.7;
+  width: 24px;
+  height: 24px;
 }
 
 .add-reaction-btn:hover {
   background-color: #40444b;
   color: #dcddde;
-  opacity: 1;
 }
 
 .reaction-icon {
-  font-size: 12px;
-}
-
-.reaction-text {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-size: 14px;
 }
 
 /* Reaction Picker */
