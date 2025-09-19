@@ -239,6 +239,7 @@ html, body {
 .message-content {
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 
 .message-header {
@@ -385,6 +386,148 @@ html, body {
   border-radius: 4px;
   font-weight: 500;
   font-size: 0.9em;
+}
+
+/* Reaction Styles */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.reaction {
+  display: flex;
+  align-items: center;
+  background-color: #2f3136;
+  border: 1px solid #40444b;
+  border-radius: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 12px;
+  line-height: 1;
+  min-height: 24px;
+}
+
+.reaction:hover {
+  background-color: #40444b;
+  border-color: #5865f2;
+}
+
+.reaction.reacted {
+  background-color: #5865f2;
+  border-color: #5865f2;
+}
+
+.reaction-emoji {
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.reaction-count {
+  color: #dcddde;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.reaction.reacted .reaction-count {
+  color: #ffffff;
+}
+
+.message-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  margin-top: 4px;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.add-reaction-btn {
+  background: none;
+  border: none;
+  color: #8e9297;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 16px;
+  transition: all 0.15s ease;
+}
+
+.add-reaction-btn:hover {
+  background-color: #40444b;
+  color: #dcddde;
+}
+
+/* Reaction Picker */
+.reaction-picker {
+  position: absolute;
+  background-color: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  margin-top: 4px;
+  min-width: 200px;
+}
+
+.reaction-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #40444b;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dcddde;
+}
+
+.close-picker {
+  background: none;
+  border: none;
+  color: #8e9297;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.close-picker:hover {
+  background-color: #40444b;
+  color: #dcddde;
+}
+
+.reaction-picker-emojis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 8px;
+}
+
+.reaction-picker-emoji {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaction-picker-emoji:hover {
+  background-color: #40444b;
+  transform: scale(1.1);
 }
 
 /* Sign In Styles */

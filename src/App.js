@@ -526,8 +526,47 @@ const isUserMentioned = (messageText, currentUser) => {
 
 function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
-    const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
+    const [showReactionPicker, setShowReactionPicker] = useState(false);
+    
+    // Common emojis for reactions
+    const commonEmojis = ['👍', '👎', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯'];
+    
+    // Add or remove reaction
+    const toggleReaction = async (emoji) => {
+        if (!auth.currentUser) return;
+        
+        const messageRef = firestore.collection('messages').doc(id);
+        const currentReactions = reactions || {};
+        const userUid = auth.currentUser.uid;
+        
+        try {
+            if (currentReactions[emoji] && currentReactions[emoji].includes(userUid)) {
+                // Remove reaction
+                const updatedUsers = currentReactions[emoji].filter(uid => uid !== userUid);
+                if (updatedUsers.length === 0) {
+                    // Remove emoji entirely if no users left
+                    const { [emoji]: removed, ...rest } = currentReactions;
+                    await messageRef.update({ reactions: rest });
+                } else {
+                    // Update users list
+                    await messageRef.update({
+                        [`reactions.${emoji}`]: updatedUsers
+                    });
+                }
+            } else {
+                // Add reaction
+                const currentUsers = currentReactions[emoji] || [];
+                await messageRef.update({
+                    [`reactions.${emoji}`]: [...currentUsers, userUid]
+                });
+            }
+            setShowReactionPicker(false);
+        } catch (error) {
+            console.error('Error updating reaction:', error);
+        }
+    };
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
@@ -634,6 +673,59 @@ function ChatMessage({ message }) {
                 <div className="message-text">
                     {renderTextWithMentions(text)}
                 </div>
+                
+                {/* Reactions */}
+                {reactions && Object.keys(reactions).length > 0 && (
+                    <div className="message-reactions">
+                        {Object.entries(reactions).map(([emoji, userIds]) => (
+                            <button
+                                key={emoji}
+                                className={`reaction ${userIds.includes(auth.currentUser?.uid) ? 'reacted' : ''}`}
+                                onClick={() => toggleReaction(emoji)}
+                            >
+                                <span className="reaction-emoji">{emoji}</span>
+                                <span className="reaction-count">{userIds.length}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                
+                {/* Add Reaction Button */}
+                <div className="message-actions">
+                    <button 
+                        className="add-reaction-btn"
+                        onClick={() => setShowReactionPicker(!showReactionPicker)}
+                        title="Add Reaction"
+                    >
+                        😀
+                    </button>
+                </div>
+                
+                {/* Reaction Picker */}
+                {showReactionPicker && (
+                    <div className="reaction-picker">
+                        <div className="reaction-picker-header">
+                            <span>Add Reaction</span>
+                            <button 
+                                className="close-picker"
+                                onClick={() => setShowReactionPicker(false)}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="reaction-picker-emojis">
+                            {commonEmojis.map(emoji => (
+                                <button
+                                    key={emoji}
+                                    className="reaction-picker-emoji"
+                                    onClick={() => toggleReaction(emoji)}
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )
