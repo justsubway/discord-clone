@@ -4,7 +4,6 @@ import './App.css';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
-import 'firebase/compat/storage';
 
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
@@ -23,26 +22,10 @@ const firestore = firebase.firestore();
 
 function App() {
     const [user] = useAuthState(auth);
-    const [notificationPermission, setNotificationPermission] = useState('default');
-
-    // Request notification permission on app start
-    React.useEffect(() => {
-        if ('Notification' in window) {
-            if (Notification.permission === 'granted') {
-                setNotificationPermission('granted');
-            } else if (Notification.permission !== 'denied') {
-                Notification.requestPermission().then(permission => {
-                    setNotificationPermission(permission);
-                });
-            } else {
-                setNotificationPermission('denied');
-            }
-        }
-    }, []);
 
     return (
         <div className={`App ${user ? 'discord-layout' : ''}`}>
-            {user ? <DiscordLayout notificationPermission={notificationPermission} /> : <SignIn />}
+            {user ? <DiscordLayout /> : <SignIn />}
         </div>
     );
 }
@@ -157,100 +140,8 @@ function SignIn() {
     )
 }
 
-function DiscordLayout({ notificationPermission }) {
+function DiscordLayout() {
     const [selectedChannel, setSelectedChannel] = useState('general');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState([]);
-    const [isSearching, setIsSearching] = useState(false);
-    const [showSearch, setShowSearch] = useState(false);
-    const searchTimeoutRef = useRef(null);
-    const [isPageVisible, setIsPageVisible] = useState(!document.hidden);
-
-    // Handle page visibility change
-    React.useEffect(() => {
-        const handleVisibilityChange = () => {
-            setIsPageVisible(!document.hidden);
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, []);
-
-    // Show notification function
-    const showNotification = (title, body, icon) => {
-        if (notificationPermission === 'granted' && !isPageVisible) {
-            const notification = new Notification(title, {
-                body,
-                icon: icon || '/SuperChat.png',
-                badge: '/SuperChat.png',
-                tag: 'discord-clone-notification'
-            });
-
-            // Close notification after 5 seconds
-            setTimeout(() => {
-                notification.close();
-            }, 5000);
-
-            // Focus window when notification is clicked
-            notification.onclick = () => {
-                window.focus();
-                notification.close();
-            };
-        }
-    };
-
-    // Search messages
-    const searchMessages = async (query) => {
-        if (!query.trim()) {
-            setSearchResults([]);
-            return;
-        }
-
-        setIsSearching(true);
-        try {
-            const searchRef = firestore.collection('messages');
-            const snapshot = await searchRef
-                .where('channel', '==', selectedChannel)
-                .orderBy('createdAt', 'desc')
-                .limit(50)
-                .get();
-
-            const allMessages = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            // Filter messages by search query
-            const filtered = allMessages.filter(message => {
-                const text = message.text?.toLowerCase() || '';
-                const displayName = message.displayName?.toLowerCase() || '';
-                const queryLower = query.toLowerCase();
-                
-                return text.includes(queryLower) || displayName.includes(queryLower);
-            });
-
-            setSearchResults(filtered);
-        } catch (error) {
-            console.error('Error searching messages:', error);
-        } finally {
-            setIsSearching(false);
-        }
-    };
-
-    // Handle search input change
-    const handleSearchChange = (e) => {
-        const query = e.target.value;
-        setSearchQuery(query);
-        
-        // Debounce search
-        if (searchTimeoutRef.current) {
-            clearTimeout(searchTimeoutRef.current);
-        }
-        
-        searchTimeoutRef.current = setTimeout(() => {
-            searchMessages(query);
-        }, 300);
-    };
     
     return (
         <>
@@ -305,61 +196,19 @@ function DiscordLayout({ notificationPermission }) {
             {/* Main Content */}
             <div className="main-content">
                 <div className="chat-header">
-                    <div className="channel-info">
-                        <span className="channel-name">#{selectedChannel}</span>
-                        <span className="channel-description">General discussion</span>
-                    </div>
-                    <div className="search-container">
-                        <input
-                            type="text"
-                            placeholder="Search messages..."
-                            value={searchQuery}
-                            onChange={handleSearchChange}
-                            className="search-input"
-                        />
-                        <button
-                            onClick={() => setShowSearch(!showSearch)}
-                            className="search-toggle"
-                            title="Toggle search results"
-                        >
-                            🔍
-                        </button>
-                    </div>
+                    <span className="channel-name">#{selectedChannel}</span>
+                    <span className="channel-description">General discussion</span>
                 </div>
                 
-                {showSearch && searchQuery && (
-                    <div className="search-results">
-                        <div className="search-results-header">
-                            <h3>Search Results for "{searchQuery}"</h3>
-                            <button 
-                                onClick={() => setShowSearch(false)}
-                                className="close-search"
-                            >
-                                ×
-                            </button>
-                        </div>
-                        <div className="search-results-content">
-                            {isSearching ? (
-                                <div className="search-loading">Searching...</div>
-                            ) : searchResults.length > 0 ? (
-                                searchResults.map(message => (
-                                    <ChatMessage key={message.id} message={message} showNotification={showNotification} />
-                                ))
-                            ) : (
-                                <div className="no-results">No messages found</div>
-                            )}
-                        </div>
-                    </div>
-                )}
-                
-                <ChatRoom channel={selectedChannel} showNotification={showNotification} />
+                <ChatRoom channel={selectedChannel} />
             </div>
         </>
     );
 }
 
-function ChatRoom({ channel, showNotification }) {
+function ChatRoom({ channel }) {
     const dummy = useRef();
+    const messagesContainerRef = useRef();
     const messagesRef = firestore.collection('messages');
     
     // Use proper query to get the most recent messages
@@ -375,17 +224,6 @@ function ChatRoom({ channel, showNotification }) {
     const [mentionQuery, setMentionQuery] = useState('');
     const [mentionPosition, setMentionPosition] = useState(0);
     const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
-    
-    // File upload state
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [isUploading, setIsUploading] = useState(false);
-    const fileInputRef = useRef(null);
-    
-    // Typing indicators state
-    const [typingUsers, setTypingUsers] = useState([]);
-    const [isTyping, setIsTyping] = useState(false);
-    const typingTimeoutRef = useRef(null);
-    
 
     // Get unique users from messages for mention autocomplete
     const getUniqueUsers = () => {
@@ -410,44 +248,28 @@ function ChatRoom({ channel, showNotification }) {
         user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
     );
 
-    // Listen to typing indicators
+    // Auto-scroll to bottom when messages load or change
     React.useEffect(() => {
-        const typingRef = firestore.collection('typing');
-        const unsubscribe = typingRef
-            .where('channel', '==', channel)
-            .onSnapshot((snapshot) => {
-                const typingData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                
-                // Filter out current user and expired typing indicators
-                const now = new Date();
-                const validTyping = typingData.filter(data => {
-                    const isNotCurrentUser = data.uid !== auth.currentUser?.uid;
-                    const isRecent = data.timestamp && 
-                        (now - data.timestamp.toDate()) < 5000; // 5 seconds
-                    return isNotCurrentUser && isRecent;
-                });
-                
-                setTypingUsers(validTyping);
-            });
+        if (messages && messages.length > 0) {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => {
+                if (dummy.current) {
+                    dummy.current.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 100);
+        }
+    }, [messages]);
 
-        return () => unsubscribe();
+    // Auto-scroll to bottom when channel changes
+    React.useEffect(() => {
+        if (messages && messages.length > 0) {
+            setTimeout(() => {
+                if (dummy.current) {
+                    dummy.current.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 100);
+        }
     }, [channel]);
-
-    // Cleanup typing status on unmount
-    React.useEffect(() => {
-        return () => {
-            if (isTyping) {
-                updateTypingStatus(false);
-            }
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-        };
-    }, [isTyping]);
-
 
     // Debug logging for messages
     console.log('=== CHATROOM DEBUG ===');
@@ -458,7 +280,7 @@ function ChatRoom({ channel, showNotification }) {
     console.log('Query:', query);
     console.log('Unique users:', uniqueUsers);
 
-    // Handle input change for mention detection and typing indicators
+    // Handle input change for mention detection
     const handleInputChange = (e) => {
         const value = e.target.value;
         const cursorPosition = e.target.selectionStart;
@@ -478,57 +300,6 @@ function ChatRoom({ channel, showNotification }) {
         }
         
         setFormValue(value);
-        
-        // Handle typing indicators
-        if (value.trim() && !isTyping) {
-            setIsTyping(true);
-            updateTypingStatus(true);
-        } else if (!value.trim() && isTyping) {
-            setIsTyping(false);
-            updateTypingStatus(false);
-        }
-        
-        // Reset typing timeout
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-        }
-        
-        // Set timeout to stop typing indicator
-        typingTimeoutRef.current = setTimeout(() => {
-            if (isTyping) {
-                setIsTyping(false);
-                updateTypingStatus(false);
-            }
-        }, 3000);
-    };
-
-    // Update typing status in Firestore
-    const updateTypingStatus = async (typing) => {
-        try {
-            const currentUser = auth.currentUser;
-            if (!currentUser) return;
-            
-            const typingRef = firestore.collection('typing').doc(`${channel}_${currentUser.uid}`);
-            
-            if (typing) {
-                const { displayName, isAnonymous } = currentUser;
-                const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
-                const displayNameWithCode = isAnonymous 
-                    ? `Guest ${guestCode || 'XXXX'}` 
-                    : (displayName || 'Anonymous');
-                
-                await typingRef.set({
-                    uid: currentUser.uid,
-                    displayName: displayNameWithCode,
-                    channel: channel,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-            } else {
-                await typingRef.delete();
-            }
-        } catch (error) {
-            console.error('Error updating typing status:', error);
-        }
     };
 
     // Handle mention selection
@@ -566,42 +337,12 @@ function ChatRoom({ channel, showNotification }) {
         }
     };
 
-    // Handle file selection
-    const handleFileSelect = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            // Check file size (max 10MB)
-            if (file.size > 10 * 1024 * 1024) {
-                alert('File size must be less than 10MB');
-                return;
-            }
-            setSelectedFile(file);
-        }
-    };
-
-    // Handle file upload
-    const uploadFile = async (file) => {
-        const storage = firebase.storage();
-        const storageRef = storage.ref();
-        const fileRef = storageRef.child(`uploads/${Date.now()}_${file.name}`);
-        
-        try {
-            const snapshot = await fileRef.put(file);
-            const downloadURL = await snapshot.ref.getDownloadURL();
-            return downloadURL;
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            throw error;
-        }
-    };
-
     const sendMessage = async (e) => {
         e.preventDefault();
 
         console.log('=== SENDING MESSAGE ===');
         console.log('Form value:', formValue);
         console.log('Current channel:', channel);
-        console.log('Selected file:', selectedFile);
 
         const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
         console.log('User info:', { uid, photoURL, displayName, isAnonymous });
@@ -612,55 +353,28 @@ function ChatRoom({ channel, showNotification }) {
             ? `Guest ${guestCode || 'XXXX'}` 
             : (displayName || 'Anonymous');
 
-        setIsUploading(true);
-
-        try {
-            let fileURL = null;
-            let fileType = null;
-            let fileName = null;
-
-            // Upload file if selected
-            if (selectedFile) {
-                fileURL = await uploadFile(selectedFile);
-                fileType = selectedFile.type;
-                fileName = selectedFile.name;
-            }
-
-            const messageData = {
+        const messageData = {
             text: formValue,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             uid,
-                photoURL,
-                displayName: displayNameWithCode,
-                channel: channel || 'general',
-                guestCode: guestCode || null,
-                ...(fileURL && { 
-                    fileURL, 
-                    fileType, 
-                    fileName,
-                    isFile: true 
-                })
-            };
+            photoURL,
+            displayName: displayNameWithCode,
+            channel: channel || 'general',
+            guestCode: guestCode || null
+        };
 
-            console.log('Message data to send:', messageData);
+        console.log('Message data to send:', messageData);
 
+        try {
             const docRef = await messagesRef.add(messageData);
             console.log('Message sent successfully with ID:', docRef.id);
-
-            // Reset form
-            setFormValue('');
-            setSelectedFile(null);
-            setShowMentionDropdown(false);
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-            dummy.current.scrollIntoView({ behavior: 'smooth' });
         } catch (error) {
             console.error('Error sending message:', error);
-            alert('Error sending message. Please try again.');
-        } finally {
-            setIsUploading(false);
         }
+
+        setFormValue('');
+        setShowMentionDropdown(false);
+        dummy.current.scrollIntoView({ behavior: 'smooth' });
     }
 
     // Filter messages for the current channel and reverse to show chronological order
@@ -690,74 +404,27 @@ function ChatRoom({ channel, showNotification }) {
 
     return (
         <>
-            <div className="messages-container">
+            <div className="messages-container" ref={messagesContainerRef}>
                 {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} showNotification={showNotification} />)
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
                 ) : (
                     <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
                         <p>No messages in #{channel} yet</p>
                         <p>Be the first to send a message!</p>
                     </div>
                 )}
-                {typingUsers.length > 0 && (
-                    <div className="typing-indicator">
-                        <div className="typing-dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <span className="typing-text">
-                            {typingUsers.length === 1 
-                                ? `${typingUsers[0].displayName} is typing...`
-                                : `${typingUsers.length} people are typing...`
-                            }
-                        </span>
-                    </div>
-                )}
                 <span ref={dummy}></span>
             </div>
 
             <div className="message-input-container">
-                {selectedFile && (
-                    <div className="file-preview">
-                        <span className="file-name">📎 {selectedFile.name}</span>
-                        <button 
-                            type="button" 
-                            onClick={() => {
-                                setSelectedFile(null);
-                                if (fileInputRef.current) fileInputRef.current.value = '';
-                            }}
-                            className="remove-file"
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
                 <form className="message-input-form" onSubmit={sendMessage}>
                     <div className="input-wrapper">
-                        <input 
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleFileSelect}
-                            className="file-input"
-                            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
-                            style={{ display: 'none' }}
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="file-upload-button"
-                            title="Upload file"
-                        >
-                            📎
-                        </button>
                         <input 
                             className="message-input"
                             value={formValue} 
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
                             placeholder={`Message #${channel}`}
-                            disabled={isUploading}
                         />
                         {showMentionDropdown && filteredUsers.length > 0 && (
                             <div className="mention-dropdown">
@@ -781,9 +448,9 @@ function ChatRoom({ channel, showNotification }) {
                     <button 
                         type="submit" 
                         className="message-send-button"
-                        disabled={(!formValue && !selectedFile) || isUploading}
+                        disabled={!formValue}
                     >
-                        {isUploading ? '⏳' : '➤'}
+                        ➤
                     </button>
                 </form>
             </div>
@@ -799,8 +466,8 @@ const getPlayedSoundMessages = () => {
     return window.playedSoundMessages;
 };
 
-// Function to play mention sound and show notification
-const playMentionSound = (showNotification) => {
+// Function to play mention sound
+const playMentionSound = () => {
     try {
         // Create a simple beep sound using Web Audio API
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -857,15 +524,10 @@ const isUserMentioned = (messageText, currentUser) => {
     return isMentioned;
 };
 
-function ChatMessage({ message, showNotification }) {
+function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
-    const { text, uid, photoURL, displayName, createdAt, guestCode, id, fileURL, fileType, fileName, isFile } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
-    const [isEditing, setIsEditing] = useState(false);
-    const [editText, setEditText] = useState(text);
-    const [showActions, setShowActions] = useState(false);
-    const [showReactionPicker, setShowReactionPicker] = useState(false);
-    const [revealedSpoilers, setRevealedSpoilers] = useState(new Set());
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
@@ -894,21 +556,6 @@ function ChatMessage({ message, showNotification }) {
         if (isMentioned && isNotMyMessage && notPlayedYet) {
             console.log('🎵 Playing mention sound!');
             playMentionSound();
-            
-            // Show desktop notification
-            if (showNotification) {
-                const currentUser = auth.currentUser;
-                const displayName = currentUser?.isAnonymous 
-                    ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}`
-                    : (currentUser?.displayName || 'Anonymous');
-                
-                showNotification(
-                    'You were mentioned!',
-                    `${displayName} mentioned you in #${message.channel || 'general'}`,
-                    photoURL
-                );
-            }
-            
             playedSoundMessages.add(messageKey);
             console.log('✅ Sound marked as played for message:', messageKey);
         } else {
@@ -919,83 +566,6 @@ function ChatMessage({ message, showNotification }) {
             });
         }
     }, [text, id, uid]);
-
-    // Handle message editing
-    const handleEdit = () => {
-        setIsEditing(true);
-        setEditText(text);
-    };
-
-    const handleSaveEdit = async () => {
-        if (editText.trim() === '') return;
-        
-        try {
-            await firestore.collection('messages').doc(id).update({
-                text: editText.trim(),
-                editedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            setIsEditing(false);
-        } catch (error) {
-            console.error('Error editing message:', error);
-        }
-    };
-
-    const handleCancelEdit = () => {
-        setIsEditing(false);
-        setEditText(text);
-    };
-
-    // Handle message deletion
-    const handleDelete = async () => {
-        if (window.confirm('Are you sure you want to delete this message?')) {
-            try {
-                await firestore.collection('messages').doc(id).delete();
-            } catch (error) {
-                console.error('Error deleting message:', error);
-            }
-        }
-    };
-
-    // Handle emoji reactions
-    const handleReaction = async (emoji) => {
-        try {
-            const reactions = message.reactions || {};
-            const currentUserUid = auth.currentUser?.uid;
-            
-            if (reactions[emoji]) {
-                // Toggle reaction
-                if (reactions[emoji].includes(currentUserUid)) {
-                    // Remove user from reaction
-                    const updatedUsers = reactions[emoji].filter(uid => uid !== currentUserUid);
-                    if (updatedUsers.length === 0) {
-                        // Remove emoji if no users left
-                        const { [emoji]: removed, ...rest } = reactions;
-                        await firestore.collection('messages').doc(id).update({
-                            reactions: rest
-                        });
-                    } else {
-                        // Update users list
-                        await firestore.collection('messages').doc(id).update({
-                            [`reactions.${emoji}`]: updatedUsers
-                        });
-                    }
-                } else {
-                    // Add user to reaction
-                    await firestore.collection('messages').doc(id).update({
-                        [`reactions.${emoji}`]: [...reactions[emoji], currentUserUid]
-                    });
-                }
-            } else {
-                // Add new reaction
-                await firestore.collection('messages').doc(id).update({
-                    [`reactions.${emoji}`]: [currentUserUid]
-                });
-            }
-            setShowReactionPicker(false);
-        } catch (error) {
-            console.error('Error updating reaction:', error);
-        }
-    };
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
@@ -1026,199 +596,27 @@ function ChatMessage({ message, showNotification }) {
         return 'https://api.adorable.io/avatars/23/abott@adorable.png';
     };
 
-    // Function to render text with mentions and formatting
+    // Function to render text with mentions
     const renderTextWithMentions = (text) => {
         if (!text) return '';
         
-        // First split by code blocks (```code```)
-        const codeBlockParts = text.split(/(```[\s\S]*?```)/g);
+        // Split text by mentions and render each part
+        const parts = text.split(/(@\w+)/g);
         
-        return codeBlockParts.map((codeBlock, codeIndex) => {
-            if (codeBlock.startsWith('```') && codeBlock.endsWith('```')) {
-                // Render code block
-                const code = codeBlock.slice(3, -3).trim();
+        return parts.map((part, index) => {
+            if (part.startsWith('@')) {
                 return (
-                    <pre key={`code-${codeIndex}`} className="code-block">
-                        <code>{code}</code>
-                    </pre>
+                    <span key={index} className="mention-text">
+                        {part}
+                    </span>
                 );
             }
-            
-            // For non-code parts, split by inline code (`code`)
-            const inlineCodeParts = codeBlock.split(/(`[^`]+`)/g);
-            
-            return inlineCodeParts.map((inlineCode, inlineIndex) => {
-                if (inlineCode.startsWith('`') && inlineCode.endsWith('`')) {
-                    // Render inline code
-                    const code = inlineCode.slice(1, -1);
-                    return (
-                        <code key={`inline-${codeIndex}-${inlineIndex}`} className="inline-code">
-                            {code}
-                        </code>
-                    );
-                }
-                
-                // For non-code parts, split by spoilers (||spoiler||)
-                const spoilerParts = inlineCode.split(/(\|\|[^|]+\|\|)/g);
-                
-                return spoilerParts.map((spoiler, spoilerIndex) => {
-                    if (spoiler.startsWith('||') && spoiler.endsWith('||')) {
-                        // Render spoiler
-                        const spoilerText = spoiler.slice(2, -2);
-                        const spoilerKey = `${codeIndex}-${inlineIndex}-${spoilerIndex}`;
-                        const isRevealed = revealedSpoilers.has(spoilerKey);
-                        
-                        return (
-                            <span 
-                                key={`spoiler-${spoilerKey}`} 
-                                className={`spoiler ${isRevealed ? 'revealed' : ''}`}
-                                onClick={() => {
-                                    if (!isRevealed) {
-                                        setRevealedSpoilers(prev => new Set([...prev, spoilerKey]));
-                                    }
-                                }}
-                            >
-                                {isRevealed ? spoilerText : 'SPOILER'}
-                            </span>
-                        );
-                    }
-                    
-                    // For non-spoiler parts, split by mentions
-                    const mentionParts = spoiler.split(/(@\w+)/g);
-                    
-                    return mentionParts.map((part, mentionIndex) => {
-                        if (part.startsWith('@')) {
-                            return (
-                                <span key={`mention-${codeIndex}-${inlineIndex}-${spoilerIndex}-${mentionIndex}`} className="mention-text">
-                                    {part}
-                                </span>
-                            );
-                        }
-                        
-                        // For non-mention parts, apply bold and italic formatting
-                        return renderBoldItalic(part, `${codeIndex}-${inlineIndex}-${spoilerIndex}-${mentionIndex}`);
-                    });
-                });
-            });
+            return part;
         });
-    };
-
-    // Function to render bold and italic formatting
-    const renderBoldItalic = (text, keyPrefix) => {
-        // Split by bold (**text** or __text__)
-        const boldParts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
-        
-        return boldParts.map((boldPart, boldIndex) => {
-            if ((boldPart.startsWith('**') && boldPart.endsWith('**')) || 
-                (boldPart.startsWith('__') && boldPart.endsWith('__'))) {
-                const boldText = boldPart.slice(2, -2);
-                return (
-                    <strong key={`bold-${keyPrefix}-${boldIndex}`}>
-                        {renderItalic(boldText, `${keyPrefix}-${boldIndex}`)}
-                    </strong>
-                );
-            }
-            
-            return renderItalic(boldPart, `${keyPrefix}-${boldIndex}`);
-        });
-    };
-
-    // Function to render italic formatting
-    const renderItalic = (text, keyPrefix) => {
-        // Split by italic (*text* or _text_)
-        const italicParts = text.split(/(\*[^*]+\*|_[^_]+_)/g);
-        
-        return italicParts.map((italicPart, italicIndex) => {
-            if ((italicPart.startsWith('*') && italicPart.endsWith('*') && italicPart.length > 2) || 
-                (italicPart.startsWith('_') && italicPart.endsWith('_') && italicPart.length > 2)) {
-                const italicText = italicPart.slice(1, -1);
-                return (
-                    <em key={`italic-${keyPrefix}-${italicIndex}`}>
-                        {italicText}
-                    </em>
-                );
-            }
-            
-            return italicPart;
-        });
-    };
-
-    // Common emojis for reactions
-    const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯', '👏'];
-
-    // Render reactions
-    const renderReactions = () => {
-        const reactions = message.reactions || {};
-        const currentUserUid = auth.currentUser?.uid;
-        
-        return Object.entries(reactions).map(([emoji, users]) => {
-            const isUserReacted = users.includes(currentUserUid);
-            return (
-                <div 
-                    key={emoji} 
-                    className={`reaction ${isUserReacted ? 'reacted' : ''}`}
-                    onClick={() => handleReaction(emoji)}
-                >
-                    <span className="reaction-emoji">{emoji}</span>
-                    <span className="reaction-count">{users.length}</span>
-                </div>
-            );
-        });
-    };
-
-    // Render file content
-    const renderFile = () => {
-        if (!isFile || !fileURL) return null;
-
-        const isImage = fileType?.startsWith('image/');
-        const isVideo = fileType?.startsWith('video/');
-        const isAudio = fileType?.startsWith('audio/');
-
-        return (
-            <div className="file-attachment">
-                {isImage ? (
-                    <img 
-                        src={fileURL} 
-                        alt={fileName || 'Image'} 
-                        className="file-image"
-                        onClick={() => window.open(fileURL, '_blank')}
-                    />
-                ) : isVideo ? (
-                    <video 
-                        src={fileURL} 
-                        controls 
-                        className="file-video"
-                        onClick={() => window.open(fileURL, '_blank')}
-                    />
-                ) : isAudio ? (
-                    <audio 
-                        src={fileURL} 
-                        controls 
-                        className="file-audio"
-                    />
-                ) : (
-                    <div 
-                        className="file-download"
-                        onClick={() => window.open(fileURL, '_blank')}
-                    >
-                        <div className="file-icon">📄</div>
-                        <div className="file-info">
-                            <div className="file-name">{fileName || 'File'}</div>
-                            <div className="file-type">{fileType || 'Unknown type'}</div>
-                        </div>
-                        <div className="download-icon">⬇️</div>
-                    </div>
-                )}
-            </div>
-        );
     };
 
     return (
-        <div 
-            className={`message ${messageClass}`}
-            onMouseEnter={() => setShowActions(true)}
-            onMouseLeave={() => setShowActions(false)}
-        >
+        <div className={`message ${messageClass}`}>
             <img 
                 className="message-avatar"
                 src={getAvatar()} 
@@ -1231,86 +629,12 @@ function ChatMessage({ message, showNotification }) {
                     </span>
                     <span className="message-timestamp">
                         {formatTime(createdAt)}
-                        {message.editedAt && ' (edited)'}
                     </span>
                 </div>
                 <div className="message-text">
-                    {isEditing ? (
-                        <div className="edit-form">
-                            <input
-                                type="text"
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSaveEdit();
-                                    if (e.key === 'Escape') handleCancelEdit();
-                                }}
-                                className="edit-input"
-                                autoFocus
-                            />
-                            <div className="edit-buttons">
-                                <button onClick={handleSaveEdit} className="edit-save">Save</button>
-                                <button onClick={handleCancelEdit} className="edit-cancel">Cancel</button>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            {renderTextWithMentions(text)}
-                            {renderFile()}
-                        </>
-                    )}
+                    {renderTextWithMentions(text)}
                 </div>
-                {message.reactions && Object.keys(message.reactions).length > 0 && (
-                    <div className="message-reactions">
-                        {renderReactions()}
-                    </div>
-                )}
             </div>
-            {showActions && !isEditing && (
-                <div className="message-actions">
-                    <button 
-                        onClick={() => setShowReactionPicker(!showReactionPicker)} 
-                        className="action-button reaction-button" 
-                        title="Add Reaction"
-                    >
-                        😀
-                    </button>
-                    {uid === auth.currentUser?.uid && (
-                        <>
-                            <button onClick={handleEdit} className="action-button edit-button" title="Edit">
-                                ✏️
-                            </button>
-                            <button onClick={handleDelete} className="action-button delete-button" title="Delete">
-                                🗑️
-                            </button>
-                        </>
-                    )}
-                </div>
-            )}
-            {showReactionPicker && (
-                <div className="reaction-picker">
-                    <div className="reaction-picker-header">
-                        <span>Add Reaction</span>
-                        <button 
-                            onClick={() => setShowReactionPicker(false)}
-                            className="close-picker"
-                        >
-                            ×
-                        </button>
-                    </div>
-                    <div className="reaction-picker-emojis">
-                        {commonEmojis.map(emoji => (
-                            <button
-                                key={emoji}
-                                className="reaction-picker-emoji"
-                                onClick={() => handleReaction(emoji)}
-                            >
-                                {emoji}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     )
 }
