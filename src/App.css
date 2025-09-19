@@ -254,6 +254,11 @@ html, body {
   font-size: 16px;
 }
 
+.message-author.guest {
+  color: #8b9cff;
+  font-style: italic;
+}
+
 .message-timestamp {
   font-size: 12px;
   color: #72767d;

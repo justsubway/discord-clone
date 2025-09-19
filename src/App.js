@@ -46,6 +46,16 @@ function SignIn() {
         }
     }
 
+    const generateGuestCode = () => {
+        // Generate a 4-character guest code
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let result = '';
+        for (let i = 0; i < 4; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    };
+
     const signInAsGuest = async () => {
         setIsGuestLoading(true);
         try {
@@ -55,6 +65,11 @@ function SignIn() {
             console.log('Guest sign in successful:', result);
             console.log('User:', result.user);
             console.log('Is anonymous:', result.user.isAnonymous);
+            
+            // Generate and store guest code
+            const guestCode = generateGuestCode();
+            localStorage.setItem('guestCode', guestCode);
+            console.log('Guest code generated:', guestCode);
         } catch (error) {
             console.error('Guest sign in error:', error);
             console.error('Error code:', error.code);
@@ -204,13 +219,20 @@ function ChatRoom({ channel }) {
 
         const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
 
+        // Get guest code if user is anonymous
+        const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
+        const displayNameWithCode = isAnonymous 
+            ? `Guest ${guestCode || 'XXXX'}` 
+            : (displayName || 'Anonymous');
+
         await messagesRef.add({
             text: formValue,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             uid,
             photoURL,
-            displayName: displayName || (isAnonymous ? 'Guest' : 'Anonymous'),
-            channel: channel || 'general'
+            displayName: displayNameWithCode,
+            channel: channel || 'general',
+            guestCode: guestCode || null
         })
 
         setFormValue('');
@@ -256,7 +278,7 @@ function ChatRoom({ channel }) {
 }
 
 function ChatMessage({ message }) {
-    const { text, uid, photoURL, displayName, createdAt } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     
     const formatTime = (timestamp) => {
@@ -269,23 +291,35 @@ function ChatMessage({ message }) {
         }
     };
 
-    // Determine display name - check if user is anonymous (guest)
+    // Determine display name and avatar
     const getDisplayName = () => {
         if (displayName) return displayName;
         if (auth.currentUser?.isAnonymous) return 'Guest';
         return 'Anonymous';
     };
 
+    const getAvatar = () => {
+        if (photoURL) return photoURL;
+        
+        // Generate guest avatar based on guest code
+        if (guestCode) {
+            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+        }
+        
+        // Default avatar
+        return 'https://api.adorable.io/avatars/23/abott@adorable.png';
+    };
+
     return (
         <div className={`message ${messageClass}`}>
             <img 
                 className="message-avatar"
-                src={photoURL || 'https://api.adorable.io/avatars/23/abott@adorable.png'} 
+                src={getAvatar()} 
                 alt="User avatar"
             />
             <div className="message-content">
                 <div className="message-header">
-                    <span className="message-author">
+                    <span className={`message-author ${guestCode ? 'guest' : ''}`}>
                         {getDisplayName()}
                     </span>
                     <span className="message-timestamp">
