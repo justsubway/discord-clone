@@ -1,0 +1,34 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #36393f;
+  color: #dcddde;
+  overflow: hidden;
+}
+
+code {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* Reset default button styles */
+button {
+  font-family: inherit;
+}
+
+/* Reset default input styles */
+input, textarea {
+  font-family: inherit;
+}
+
+/* Ensure proper box sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
