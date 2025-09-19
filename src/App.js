@@ -214,7 +214,8 @@ function ChatRoom({ channel }) {
     const simpleQuery = messagesRef.limit(25);
     const query = messagesRef.orderBy('createdAt').limit(25);
 
-    const [messages] = useCollectionData(query, { idField: 'id' });
+    // Temporarily use simple query to test
+    const [messages] = useCollectionData(simpleQuery, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
 
     // Debug logging for messages
@@ -267,20 +268,12 @@ function ChatRoom({ channel }) {
 
     // Filter messages for the current channel
     const filteredMessages = messages ? messages.filter(msg => {
-        console.log('Filtering message:', msg);
-        console.log('Message channel:', msg.channel);
-        console.log('Current channel:', channel);
-        
         // If message has channel property, filter by it
         if (msg.channel) {
-            const matches = msg.channel === channel;
-            console.log('Channel match:', matches);
-            return matches;
+            return msg.channel === channel;
         }
         // If message doesn't have channel property (old messages), show in general
-        const isGeneral = channel === 'general';
-        console.log('Is general channel:', isGeneral);
-        return isGeneral;
+        return channel === 'general';
     }) : [];
 
     console.log('Filtered messages count:', filteredMessages.length);
@@ -289,24 +282,7 @@ function ChatRoom({ channel }) {
     return (
         <>
             <div className="messages-container">
-                {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
-                ) : (
-                    <div style={{color: 'white', padding: '20px', textAlign: 'center'}}>
-                        <p>No messages found. Debug info:</p>
-                        <p>Total messages: {messages ? messages.length : 'null'}</p>
-                        <p>Filtered messages: {filteredMessages.length}</p>
-                        <p>Current channel: {channel}</p>
-                        {messages && messages.length > 0 && (
-                            <div>
-                                <p>Sample message channels:</p>
-                                {messages.slice(0, 3).map((msg, i) => (
-                                    <p key={i}>Message {i}: channel="{msg.channel}"</p>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
                 <span ref={dummy}></span>
             </div>
 
@@ -332,15 +308,8 @@ function ChatRoom({ channel }) {
 }
 
 function ChatMessage({ message }) {
-    console.log('=== RENDERING MESSAGE ===');
-    console.log('Message data:', message);
-    
     const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
-    
-    console.log('Message class:', messageClass);
-    console.log('Text:', text);
-    console.log('Display name:', displayName);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
