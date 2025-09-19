@@ -217,6 +217,35 @@ function ChatRoom({ channel }) {
 
     const [messages] = useCollectionData(query, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
+    
+    // Mention system state
+    const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [mentionPosition, setMentionPosition] = useState(0);
+    const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+
+    // Get unique users from messages for mention autocomplete
+    const getUniqueUsers = () => {
+        if (!messages) return [];
+        const userMap = new Map();
+        messages.forEach(msg => {
+            if (msg.displayName && msg.uid) {
+                userMap.set(msg.uid, {
+                    displayName: msg.displayName,
+                    uid: msg.uid,
+                    photoURL: msg.photoURL
+                });
+            }
+        });
+        return Array.from(userMap.values());
+    };
+
+    const uniqueUsers = getUniqueUsers();
+
+    // Filter users based on mention query
+    const filteredUsers = uniqueUsers.filter(user => 
+        user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+    );
 
     // Debug logging for messages
     console.log('=== CHATROOM DEBUG ===');
@@ -225,6 +254,64 @@ function ChatRoom({ channel }) {
     console.log('Messages type:', typeof messages);
     console.log('Messages length:', messages ? messages.length : 'null');
     console.log('Query:', query);
+    console.log('Unique users:', uniqueUsers);
+
+    // Handle input change for mention detection
+    const handleInputChange = (e) => {
+        const value = e.target.value;
+        const cursorPosition = e.target.selectionStart;
+        
+        // Check for @ mention
+        const textBeforeCursor = value.substring(0, cursorPosition);
+        const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
+        
+        if (mentionMatch) {
+            setShowMentionDropdown(true);
+            setMentionQuery(mentionMatch[1]);
+            setMentionPosition(cursorPosition - mentionMatch[1].length - 1);
+            setSelectedMentionIndex(0);
+        } else {
+            setShowMentionDropdown(false);
+            setMentionQuery('');
+        }
+        
+        setFormValue(value);
+    };
+
+    // Handle mention selection
+    const handleMentionSelect = (user) => {
+        const textBeforeMention = formValue.substring(0, mentionPosition);
+        const textAfterMention = formValue.substring(mentionPosition + mentionQuery.length + 1);
+        const newValue = textBeforeMention + `@${user.displayName} ` + textAfterMention;
+        
+        setFormValue(newValue);
+        setShowMentionDropdown(false);
+        setMentionQuery('');
+    };
+
+    // Handle keyboard navigation in mention dropdown
+    const handleKeyDown = (e) => {
+        if (!showMentionDropdown) return;
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedMentionIndex(prev => 
+                prev < filteredUsers.length - 1 ? prev + 1 : 0
+            );
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedMentionIndex(prev => 
+                prev > 0 ? prev - 1 : filteredUsers.length - 1
+            );
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (filteredUsers[selectedMentionIndex]) {
+                handleMentionSelect(filteredUsers[selectedMentionIndex]);
+            }
+        } else if (e.key === 'Escape') {
+            setShowMentionDropdown(false);
+        }
+    };
 
     const sendMessage = async (e) => {
         e.preventDefault();
@@ -262,6 +349,7 @@ function ChatRoom({ channel }) {
         }
 
         setFormValue('');
+        setShowMentionDropdown(false);
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -306,12 +394,33 @@ function ChatRoom({ channel }) {
 
             <div className="message-input-container">
                 <form className="message-input-form" onSubmit={sendMessage}>
-                    <input 
-                        className="message-input"
-                        value={formValue} 
-                        onChange={(e) => setFormValue(e.target.value)} 
-                        placeholder={`Message #${channel}`}
-                    />
+                    <div className="input-wrapper">
+                        <input 
+                            className="message-input"
+                            value={formValue} 
+                            onChange={handleInputChange}
+                            onKeyDown={handleKeyDown}
+                            placeholder={`Message #${channel}`}
+                        />
+                        {showMentionDropdown && filteredUsers.length > 0 && (
+                            <div className="mention-dropdown">
+                                {filteredUsers.map((user, index) => (
+                                    <div
+                                        key={user.uid}
+                                        className={`mention-item ${index === selectedMentionIndex ? 'selected' : ''}`}
+                                        onClick={() => handleMentionSelect(user)}
+                                    >
+                                        <img 
+                                            className="mention-avatar" 
+                                            src={user.photoURL || 'https://api.adorable.io/avatars/23/abott@adorable.png'} 
+                                            alt={user.displayName}
+                                        />
+                                        <span className="mention-name">{user.displayName}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     <button 
                         type="submit" 
                         className="message-send-button"
@@ -325,10 +434,50 @@ function ChatRoom({ channel }) {
     )
 }
 
+// Function to play mention sound
+const playMentionSound = () => {
+    try {
+        // Create a simple beep sound using Web Audio API
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+        console.log('Could not play mention sound:', error);
+    }
+};
+
+// Function to check if current user is mentioned in a message
+const isUserMentioned = (messageText, currentUser) => {
+    if (!currentUser || !messageText) return false;
+    
+    const displayName = currentUser.displayName || 'Anonymous';
+    const mentionPattern = new RegExp(`@${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    return mentionPattern.test(messageText);
+};
+
 function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
+    
+    // Check if current user is mentioned and play sound
+    React.useEffect(() => {
+        if (isUserMentioned(text, auth.currentUser) && messageClass === 'received') {
+            playMentionSound();
+        }
+    }, [text, messageClass]);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
@@ -359,6 +508,25 @@ function ChatMessage({ message }) {
         return 'https://api.adorable.io/avatars/23/abott@adorable.png';
     };
 
+    // Function to render text with mentions
+    const renderTextWithMentions = (text) => {
+        if (!text) return '';
+        
+        // Split text by mentions and render each part
+        const parts = text.split(/(@\w+)/g);
+        
+        return parts.map((part, index) => {
+            if (part.startsWith('@')) {
+                return (
+                    <span key={index} className="mention-text">
+                        {part}
+                    </span>
+                );
+            }
+            return part;
+        });
+    };
+
     return (
         <div className={`message ${messageClass}`}>
             <img 
@@ -376,7 +544,7 @@ function ChatMessage({ message }) {
                     </span>
                 </div>
                 <div className="message-text">
-                    {text}
+                    {renderTextWithMentions(text)}
                 </div>
             </div>
         </div>

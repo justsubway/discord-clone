@@ -277,6 +277,7 @@ html, body {
 .message-input-container {
   padding: 16px;
   background-color: #36393f;
+  position: relative;
 }
 
 .message-input-form {
@@ -286,6 +287,12 @@ html, body {
   border-radius: 8px;
   padding: 0 16px;
   min-height: 44px;
+  position: relative;
+}
+
+.input-wrapper {
+  position: relative;
+  flex: 1;
 }
 
 .message-input {
@@ -324,6 +331,60 @@ html, body {
 .message-send-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Mention System Styles */
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background-color: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-bottom: 8px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+  margin: 2px;
+}
+
+.mention-item:hover,
+.mention-item.selected {
+  background-color: #5865f2;
+}
+
+.mention-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-right: 8px;
+  object-fit: cover;
+}
+
+.mention-name {
+  color: #dcddde;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mention-text {
+  background-color: #5865f2;
+  color: #ffffff;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9em;
 }
 
 /* Sign In Styles */
