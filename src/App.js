@@ -143,6 +143,64 @@ function SignIn() {
 
 function DiscordLayout() {
     const [selectedChannel, setSelectedChannel] = useState('general');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+    const searchTimeoutRef = useRef(null);
+
+    // Search messages
+    const searchMessages = async (query) => {
+        if (!query.trim()) {
+            setSearchResults([]);
+            return;
+        }
+
+        setIsSearching(true);
+        try {
+            const searchRef = firestore.collection('messages');
+            const snapshot = await searchRef
+                .where('channel', '==', selectedChannel)
+                .orderBy('createdAt', 'desc')
+                .limit(50)
+                .get();
+
+            const allMessages = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+
+            // Filter messages by search query
+            const filtered = allMessages.filter(message => {
+                const text = message.text?.toLowerCase() || '';
+                const displayName = message.displayName?.toLowerCase() || '';
+                const queryLower = query.toLowerCase();
+                
+                return text.includes(queryLower) || displayName.includes(queryLower);
+            });
+
+            setSearchResults(filtered);
+        } catch (error) {
+            console.error('Error searching messages:', error);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Handle search input change
+    const handleSearchChange = (e) => {
+        const query = e.target.value;
+        setSearchQuery(query);
+        
+        // Debounce search
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        
+        searchTimeoutRef.current = setTimeout(() => {
+            searchMessages(query);
+        }, 300);
+    };
     
     return (
         <>
@@ -197,9 +255,52 @@ function DiscordLayout() {
             {/* Main Content */}
             <div className="main-content">
                 <div className="chat-header">
-                    <span className="channel-name">#{selectedChannel}</span>
-                    <span className="channel-description">General discussion</span>
+                    <div className="channel-info">
+                        <span className="channel-name">#{selectedChannel}</span>
+                        <span className="channel-description">General discussion</span>
+                    </div>
+                    <div className="search-container">
+                        <input
+                            type="text"
+                            placeholder="Search messages..."
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            className="search-input"
+                        />
+                        <button
+                            onClick={() => setShowSearch(!showSearch)}
+                            className="search-toggle"
+                            title="Toggle search results"
+                        >
+                            🔍
+                        </button>
+                    </div>
                 </div>
+                
+                {showSearch && searchQuery && (
+                    <div className="search-results">
+                        <div className="search-results-header">
+                            <h3>Search Results for "{searchQuery}"</h3>
+                            <button 
+                                onClick={() => setShowSearch(false)}
+                                className="close-search"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="search-results-content">
+                            {isSearching ? (
+                                <div className="search-loading">Searching...</div>
+                            ) : searchResults.length > 0 ? (
+                                searchResults.map(message => (
+                                    <ChatMessage key={message.id} message={message} />
+                                ))
+                            ) : (
+                                <div className="no-results">No messages found</div>
+                            )}
+                        </div>
+                    </div>
+                )}
                 
                 <ChatRoom channel={selectedChannel} />
             </div>
@@ -234,6 +335,7 @@ function ChatRoom({ channel }) {
     const [typingUsers, setTypingUsers] = useState([]);
     const [isTyping, setIsTyping] = useState(false);
     const typingTimeoutRef = useRef(null);
+    
 
     // Get unique users from messages for mention autocomplete
     const getUniqueUsers = () => {
@@ -295,6 +397,7 @@ function ChatRoom({ channel }) {
             }
         };
     }, [isTyping]);
+
 
     // Debug logging for messages
     console.log('=== CHATROOM DEBUG ===');
