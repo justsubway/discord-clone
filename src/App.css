@@ -387,6 +387,99 @@ html, body {
   font-size: 0.9em;
 }
 
+/* Message Actions */
+.message-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-button {
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 4px;
+  color: #b9bbbe;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  transition: all 0.2s ease;
+}
+
+.action-button:hover {
+  background: #40444b;
+  color: #ffffff;
+}
+
+.edit-button:hover {
+  background: #5865f2;
+}
+
+.delete-button:hover {
+  background: #ed4245;
+}
+
+/* Edit Form */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.edit-input {
+  background: #40444b;
+  border: 1px solid #202225;
+  border-radius: 4px;
+  color: #dcddde;
+  font-size: 14px;
+  padding: 8px 12px;
+  width: 100%;
+  outline: none;
+}
+
+.edit-input:focus {
+  border-color: #5865f2;
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.edit-save, .edit-cancel {
+  background: #5865f2;
+  border: none;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  transition: background-color 0.2s ease;
+}
+
+.edit-save:hover {
+  background: #4752c4;
+}
+
+.edit-cancel {
+  background: #4f545c;
+}
+
+.edit-cancel:hover {
+  background: #5f6368;
+}
+
 /* Sign In Styles */
 .sign-in-container {
   display: flex;

@@ -504,6 +504,9 @@ function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(text);
+    const [showActions, setShowActions] = useState(false);
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
@@ -542,6 +545,42 @@ function ChatMessage({ message }) {
             });
         }
     }, [text, id, uid]);
+
+    // Handle message editing
+    const handleEdit = () => {
+        setIsEditing(true);
+        setEditText(text);
+    };
+
+    const handleSaveEdit = async () => {
+        if (editText.trim() === '') return;
+        
+        try {
+            await firestore.collection('messages').doc(id).update({
+                text: editText.trim(),
+                editedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            setIsEditing(false);
+        } catch (error) {
+            console.error('Error editing message:', error);
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditText(text);
+    };
+
+    // Handle message deletion
+    const handleDelete = async () => {
+        if (window.confirm('Are you sure you want to delete this message?')) {
+            try {
+                await firestore.collection('messages').doc(id).delete();
+            } catch (error) {
+                console.error('Error deleting message:', error);
+            }
+        }
+    };
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
@@ -592,7 +631,11 @@ function ChatMessage({ message }) {
     };
 
     return (
-        <div className={`message ${messageClass}`}>
+        <div 
+            className={`message ${messageClass}`}
+            onMouseEnter={() => setShowActions(true)}
+            onMouseLeave={() => setShowActions(false)}
+        >
             <img 
                 className="message-avatar"
                 src={getAvatar()} 
@@ -605,12 +648,43 @@ function ChatMessage({ message }) {
                     </span>
                     <span className="message-timestamp">
                         {formatTime(createdAt)}
+                        {message.editedAt && ' (edited)'}
                     </span>
                 </div>
                 <div className="message-text">
-                    {renderTextWithMentions(text)}
+                    {isEditing ? (
+                        <div className="edit-form">
+                            <input
+                                type="text"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveEdit();
+                                    if (e.key === 'Escape') handleCancelEdit();
+                                }}
+                                className="edit-input"
+                                autoFocus
+                            />
+                            <div className="edit-buttons">
+                                <button onClick={handleSaveEdit} className="edit-save">Save</button>
+                                <button onClick={handleCancelEdit} className="edit-cancel">Cancel</button>
+                            </div>
+                        </div>
+                    ) : (
+                        renderTextWithMentions(text)
+                    )}
                 </div>
             </div>
+            {showActions && uid === auth.currentUser?.uid && !isEditing && (
+                <div className="message-actions">
+                    <button onClick={handleEdit} className="action-button edit-button" title="Edit">
+                        ✏️
+                    </button>
+                    <button onClick={handleDelete} className="action-button delete-button" title="Delete">
+                        🗑️
+                    </button>
+                </div>
+            )}
         </div>
     )
 }
