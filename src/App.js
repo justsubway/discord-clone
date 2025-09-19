@@ -210,12 +210,10 @@ function ChatRoom({ channel }) {
     const dummy = useRef();
     const messagesRef = firestore.collection('messages');
     
-    // Try a simpler query first to see if orderBy is causing issues
-    const simpleQuery = messagesRef.limit(25);
+    // Use proper query with orderBy to ensure messages are sorted by creation time
     const query = messagesRef.orderBy('createdAt').limit(25);
 
-    // Temporarily use simple query to test
-    const [messages] = useCollectionData(simpleQuery, { idField: 'id' });
+    const [messages] = useCollectionData(query, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
 
     // Debug logging for messages
@@ -278,11 +276,25 @@ function ChatRoom({ channel }) {
 
     console.log('Filtered messages count:', filteredMessages.length);
     console.log('Filtered messages:', filteredMessages);
+    
+    // Debug: Check if messages have the required properties
+    if (filteredMessages.length > 0) {
+        console.log('First filtered message:', filteredMessages[0]);
+        console.log('Message has text:', !!filteredMessages[0].text);
+        console.log('Message has id:', !!filteredMessages[0].id);
+    }
 
     return (
         <>
             <div className="messages-container">
-                {filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
+                {filteredMessages.length > 0 ? (
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
+                ) : (
+                    <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
+                        <p>No messages in #{channel} yet</p>
+                        <p>Be the first to send a message!</p>
+                    </div>
+                )}
                 <span ref={dummy}></span>
             </div>
 
@@ -308,6 +320,7 @@ function ChatRoom({ channel }) {
 }
 
 function ChatMessage({ message }) {
+    console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     
