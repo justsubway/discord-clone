@@ -49,12 +49,27 @@ function SignIn() {
     const signInAsGuest = async () => {
         setIsGuestLoading(true);
         try {
+            console.log('Attempting guest sign in...');
             // Create anonymous user
             const result = await auth.signInAnonymously();
             console.log('Guest sign in successful:', result);
+            console.log('User:', result.user);
+            console.log('Is anonymous:', result.user.isAnonymous);
         } catch (error) {
             console.error('Guest sign in error:', error);
-            alert('Failed to sign in as guest. Please try again.');
+            console.error('Error code:', error.code);
+            console.error('Error message:', error.message);
+            
+            let errorMessage = 'Failed to sign in as guest. ';
+            if (error.code === 'auth/operation-not-allowed') {
+                errorMessage += 'Anonymous authentication is not enabled in Firebase console.';
+            } else if (error.code === 'auth/network-request-failed') {
+                errorMessage += 'Network error. Please check your connection.';
+            } else {
+                errorMessage += `Error: ${error.message}`;
+            }
+            
+            alert(errorMessage);
         } finally {
             setIsGuestLoading(false);
         }
