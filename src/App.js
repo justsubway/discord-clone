@@ -497,11 +497,31 @@ function ChatMessage({ message }) {
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
-        if (isUserMentioned(text, auth.currentUser) && messageClass === 'received' && !hasPlayedSound.current) {
+        const isMentioned = isUserMentioned(text, auth.currentUser);
+        const isReceived = messageClass === 'received';
+        const isNotOwnMessage = uid !== auth.currentUser?.uid;
+        const notPlayedYet = !hasPlayedSound.current;
+        
+        console.log('Sound check:', {
+            isMentioned,
+            isReceived,
+            isNotOwnMessage,
+            notPlayedYet,
+            messageText: text,
+            messageUid: uid,
+            currentUserUid: auth.currentUser?.uid
+        });
+        
+        // Only play sound if:
+        // 1. Current user is mentioned in the message
+        // 2. This is a received message (not sent by current user)
+        // 3. Sound hasn't been played for this message yet
+        if (isMentioned && isReceived && isNotOwnMessage && notPlayedYet) {
+            console.log('Playing mention sound!');
             playMentionSound();
             hasPlayedSound.current = true;
         }
-    }, [text, messageClass, id]);
+    }, [text, messageClass, id, uid]);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
