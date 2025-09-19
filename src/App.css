@@ -765,6 +765,65 @@ html, body {
   font-size: 14px;
 }
 
+/* Message Formatting */
+.code-block {
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.code-block code {
+  background: none;
+  padding: 0;
+  color: #dcddde;
+  white-space: pre;
+}
+
+.inline-code {
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+  color: #dcddde;
+}
+
+.spoiler {
+  background: #202225;
+  color: #202225;
+  border-radius: 3px;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.spoiler:hover {
+  background: #2f3136;
+  color: #dcddde;
+}
+
+.spoiler.revealed {
+  background: #2f3136;
+  color: #dcddde;
+}
+
+/* Bold and Italic are handled by default HTML elements */
+strong {
+  font-weight: 600;
+}
+
+em {
+  font-style: italic;
+}
+
 /* Sign In Styles */
 .sign-in-container {
   display: flex;

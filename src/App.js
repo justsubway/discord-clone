@@ -712,6 +712,7 @@ function ChatMessage({ message }) {
     const [editText, setEditText] = useState(text);
     const [showActions, setShowActions] = useState(false);
     const [showReactionPicker, setShowReactionPicker] = useState(false);
+    const [revealedSpoilers, setRevealedSpoilers] = useState(new Set());
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
@@ -857,22 +858,120 @@ function ChatMessage({ message }) {
         return 'https://api.adorable.io/avatars/23/abott@adorable.png';
     };
 
-    // Function to render text with mentions
+    // Function to render text with mentions and formatting
     const renderTextWithMentions = (text) => {
         if (!text) return '';
         
-        // Split text by mentions and render each part
-        const parts = text.split(/(@\w+)/g);
+        // First split by code blocks (```code```)
+        const codeBlockParts = text.split(/(```[\s\S]*?```)/g);
         
-        return parts.map((part, index) => {
-            if (part.startsWith('@')) {
+        return codeBlockParts.map((codeBlock, codeIndex) => {
+            if (codeBlock.startsWith('```') && codeBlock.endsWith('```')) {
+                // Render code block
+                const code = codeBlock.slice(3, -3).trim();
                 return (
-                    <span key={index} className="mention-text">
-                        {part}
-                    </span>
+                    <pre key={`code-${codeIndex}`} className="code-block">
+                        <code>{code}</code>
+                    </pre>
                 );
             }
-            return part;
+            
+            // For non-code parts, split by inline code (`code`)
+            const inlineCodeParts = codeBlock.split(/(`[^`]+`)/g);
+            
+            return inlineCodeParts.map((inlineCode, inlineIndex) => {
+                if (inlineCode.startsWith('`') && inlineCode.endsWith('`')) {
+                    // Render inline code
+                    const code = inlineCode.slice(1, -1);
+                    return (
+                        <code key={`inline-${codeIndex}-${inlineIndex}`} className="inline-code">
+                            {code}
+                        </code>
+                    );
+                }
+                
+                // For non-code parts, split by spoilers (||spoiler||)
+                const spoilerParts = inlineCode.split(/(\|\|[^|]+\|\|)/g);
+                
+                return spoilerParts.map((spoiler, spoilerIndex) => {
+                    if (spoiler.startsWith('||') && spoiler.endsWith('||')) {
+                        // Render spoiler
+                        const spoilerText = spoiler.slice(2, -2);
+                        const spoilerKey = `${codeIndex}-${inlineIndex}-${spoilerIndex}`;
+                        const isRevealed = revealedSpoilers.has(spoilerKey);
+                        
+                        return (
+                            <span 
+                                key={`spoiler-${spoilerKey}`} 
+                                className={`spoiler ${isRevealed ? 'revealed' : ''}`}
+                                onClick={() => {
+                                    if (!isRevealed) {
+                                        setRevealedSpoilers(prev => new Set([...prev, spoilerKey]));
+                                    }
+                                }}
+                            >
+                                {isRevealed ? spoilerText : 'SPOILER'}
+                            </span>
+                        );
+                    }
+                    
+                    // For non-spoiler parts, split by mentions
+                    const mentionParts = spoiler.split(/(@\w+)/g);
+                    
+                    return mentionParts.map((part, mentionIndex) => {
+                        if (part.startsWith('@')) {
+                            return (
+                                <span key={`mention-${codeIndex}-${inlineIndex}-${spoilerIndex}-${mentionIndex}`} className="mention-text">
+                                    {part}
+                                </span>
+                            );
+                        }
+                        
+                        // For non-mention parts, apply bold and italic formatting
+                        return renderBoldItalic(part, `${codeIndex}-${inlineIndex}-${spoilerIndex}-${mentionIndex}`);
+                    });
+                });
+            });
+        });
+    };
+
+    // Function to render bold and italic formatting
+    const renderBoldItalic = (text, keyPrefix) => {
+        // Split by bold (**text** or __text__)
+        const boldParts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+        
+        return boldParts.map((boldPart, boldIndex) => {
+            if ((boldPart.startsWith('**') && boldPart.endsWith('**')) || 
+                (boldPart.startsWith('__') && boldPart.endsWith('__'))) {
+                const boldText = boldPart.slice(2, -2);
+                return (
+                    <strong key={`bold-${keyPrefix}-${boldIndex}`}>
+                        {renderItalic(boldText, `${keyPrefix}-${boldIndex}`)}
+                    </strong>
+                );
+            }
+            
+            return renderItalic(boldPart, `${keyPrefix}-${boldIndex}`);
+        });
+    };
+
+    // Function to render italic formatting
+    const renderItalic = (text, keyPrefix) => {
+        // Split by italic (*text* or _text_)
+        const italicParts = text.split(/(\*[^*]+\*|_[^_]+_)/g);
+        
+        return italicParts.map((italicPart, italicIndex) => {
+            if ((italicPart.startsWith('*') && italicPart.endsWith('*') && italicPart.length > 2) || 
+                (italicPart.startsWith('_') && italicPart.endsWith('_') && italicPart.length > 2)) {
+                const italicText = italicPart.slice(1, -1);
+                return (
+                    <em key={`italic-${keyPrefix}-${italicIndex}`}>
+                        {italicText}
+                    </em>
+                );
+            }
+            
+            return italicPart;
         });
     };
 
