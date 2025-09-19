@@ -50,9 +50,11 @@ function SignIn() {
         setIsGuestLoading(true);
         try {
             // Create anonymous user
-            await auth.signInAnonymously();
+            const result = await auth.signInAnonymously();
+            console.log('Guest sign in successful:', result);
         } catch (error) {
             console.error('Guest sign in error:', error);
+            alert('Failed to sign in as guest. Please try again.');
         } finally {
             setIsGuestLoading(false);
         }
@@ -68,7 +70,6 @@ function SignIn() {
                             src="/SuperChat.png" 
                             alt="SuperChat Logo"
                         />
-                        <div className="discord-text">SuperChat</div>
                     </div>
                     <h1 className="sign-in-title">Welcome back!</h1>
                     <p className="sign-in-subtitle">
@@ -131,7 +132,6 @@ function DiscordLayout() {
                         />
                         <span>SuperChat Server</span>
                     </div>
-                    <SignOut />
                 </div>
                 
                 <div className="channel-categories">
@@ -156,6 +156,10 @@ function DiscordLayout() {
                             </div>
                         </div>
                     </div>
+                </div>
+                
+                <div className="channel-sidebar-footer">
+                    <SignOut />
                 </div>
             </div>
 
@@ -283,8 +287,11 @@ function ChatMessage({ message }) {
 
 function SignOut() {
     return auth.currentUser && (
-        <button className="sign-out-button" onClick={() => auth.signOut()}>
-            Sign Out
+        <button className="sign-out-button" onClick={() => auth.signOut()} title="Sign Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17 7L15.59 8.41L18.17 11H8V13H18.17L15.59 15.59L17 17L22 12L17 7Z" fill="currentColor"/>
+                <path d="M4 5H12V3H4C2.9 3 2 3.9 2 5V19C2 20.1 2.9 21 4 21H12V19H4V5Z" fill="currentColor"/>
+            </svg>
         </button>
     )
 }
