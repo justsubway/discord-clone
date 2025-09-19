@@ -155,6 +155,20 @@ function DiscordLayout() {
         ...doc.data()
     })) || [];
     
+    // Clear indicators when switching channels
+    React.useEffect(() => {
+        setUnreadChannels(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(selectedChannel);
+            return newSet;
+        });
+        setMentionedChannels(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(selectedChannel);
+            return newSet;
+        });
+    }, [selectedChannel]);
+
     // Check for mentions and unread messages
     React.useEffect(() => {
         if (!indicatorMessages || !auth.currentUser) return;
@@ -190,6 +204,7 @@ function DiscordLayout() {
         console.log('🔔 Channel indicators update:', {
             unreadChannels: Array.from(newUnreadChannels),
             mentionedChannels: Array.from(newMentionedChannels),
+            selectedChannel,
             totalMessages: indicatorMessages.length,
             recentMessages: indicatorMessages.filter(msg => {
                 const messageTime = msg.createdAt?.toDate();
@@ -200,7 +215,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages]);
+    }, [indicatorMessages, selectedChannel]);
     
     return (
         <>
@@ -333,6 +348,9 @@ function ChatRoom({ channel }) {
         user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
     );
 
+    // Track last message ID to detect new messages
+    const [lastMessageId, setLastMessageId] = useState(null);
+
     // Auto-scroll to bottom when messages load or change
     React.useEffect(() => {
         if (messages && messages.length > 0) {
@@ -355,6 +373,29 @@ function ChatRoom({ channel }) {
             }, 100);
         }
     }, [channel]);
+
+    // Check for new mentions and play sound immediately
+    React.useEffect(() => {
+        if (!messages || messages.length === 0 || !auth.currentUser) return;
+
+        const currentUser = auth.currentUser;
+        const latestMessage = messages[0]; // Most recent message (since we order by desc)
+        
+        // Only check if this is a new message we haven't processed yet
+        if (latestMessage.id === lastMessageId) return;
+        
+        // Update last message ID
+        setLastMessageId(latestMessage.id);
+        
+        // Check if this new message mentions the current user
+        if (latestMessage.text && latestMessage.text.includes('@') && latestMessage.uid !== currentUser.uid) {
+            const isMentioned = isUserMentioned(latestMessage.text, currentUser);
+            if (isMentioned) {
+                console.log('🔔 New mention detected! Playing sound immediately.');
+                playMentionSound();
+            }
+        }
+    }, [messages, lastMessageId]);
 
     // Debug logging for messages
     console.log('=== CHATROOM DEBUG ===');
@@ -760,43 +801,7 @@ function ChatMessage({ message }) {
         }
     };
     
-    // Check if current user is mentioned and play sound (only once per message)
-    React.useEffect(() => {
-        const isMentioned = isUserMentioned(text, auth.currentUser);
-        const isNotMyMessage = uid !== auth.currentUser?.uid;
-        const messageKey = `${id}-${text}`; // Unique key for this specific message
-        const playedSoundMessages = getPlayedSoundMessages();
-        const notPlayedYet = !playedSoundMessages.has(messageKey);
-        
-        console.log('🔍 Sound check for message:', {
-            messageText: text,
-            messageUid: uid,
-            currentUserUid: auth.currentUser?.uid,
-            isMentioned,
-            isNotMyMessage,
-            notPlayedYet,
-            messageKey,
-            shouldPlay: isMentioned && isNotMyMessage && notPlayedYet,
-            playedSoundMessagesSize: playedSoundMessages.size
-        });
-        
-        // Only play sound if:
-        // 1. Current user is mentioned in the message
-        // 2. This is NOT my message (someone else sent it)
-        // 3. Sound hasn't been played for this message yet
-        if (isMentioned && isNotMyMessage && notPlayedYet) {
-            console.log('🎵 Playing mention sound!');
-            playMentionSound();
-            playedSoundMessages.add(messageKey);
-            console.log('✅ Sound marked as played for message:', messageKey);
-        } else {
-            console.log('❌ Sound not played. Reasons:', {
-                isMentioned,
-                isNotMyMessage,
-                notPlayedYet
-            });
-        }
-    }, [text, id, uid]);
+    // Note: Sound playing is now handled in ChatRoom component for immediate response
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
