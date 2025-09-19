@@ -480,6 +480,116 @@ html, body {
   background: #5f6368;
 }
 
+/* Reactions */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.reaction:hover {
+  background: #40444b;
+  border-color: #5865f2;
+}
+
+.reaction.reacted {
+  background: #5865f2;
+  border-color: #5865f2;
+}
+
+.reaction-emoji {
+  margin-right: 4px;
+}
+
+.reaction-count {
+  color: #b9bbbe;
+  font-weight: 500;
+}
+
+.reaction.reacted .reaction-count {
+  color: #ffffff;
+}
+
+.reaction-button:hover {
+  background: #5865f2;
+}
+
+/* Reaction Picker */
+.reaction-picker {
+  position: absolute;
+  top: -10px;
+  right: 0;
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 200px;
+}
+
+.reaction-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #202225;
+  font-size: 12px;
+  font-weight: 500;
+  color: #b9bbbe;
+}
+
+.close-picker {
+  background: none;
+  border: none;
+  color: #b9bbbe;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-picker:hover {
+  color: #ffffff;
+}
+
+.reaction-picker-emojis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 8px;
+}
+
+.reaction-picker-emoji {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.reaction-picker-emoji:hover {
+  background: #40444b;
+}
+
 /* Sign In Styles */
 .sign-in-container {
   display: flex;

@@ -507,6 +507,7 @@ function ChatMessage({ message }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(text);
     const [showActions, setShowActions] = useState(false);
+    const [showReactionPicker, setShowReactionPicker] = useState(false);
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
@@ -581,6 +582,47 @@ function ChatMessage({ message }) {
             }
         }
     };
+
+    // Handle emoji reactions
+    const handleReaction = async (emoji) => {
+        try {
+            const reactions = message.reactions || {};
+            const currentUserUid = auth.currentUser?.uid;
+            
+            if (reactions[emoji]) {
+                // Toggle reaction
+                if (reactions[emoji].includes(currentUserUid)) {
+                    // Remove user from reaction
+                    const updatedUsers = reactions[emoji].filter(uid => uid !== currentUserUid);
+                    if (updatedUsers.length === 0) {
+                        // Remove emoji if no users left
+                        const { [emoji]: removed, ...rest } = reactions;
+                        await firestore.collection('messages').doc(id).update({
+                            reactions: rest
+                        });
+                    } else {
+                        // Update users list
+                        await firestore.collection('messages').doc(id).update({
+                            [`reactions.${emoji}`]: updatedUsers
+                        });
+                    }
+                } else {
+                    // Add user to reaction
+                    await firestore.collection('messages').doc(id).update({
+                        [`reactions.${emoji}`]: [...reactions[emoji], currentUserUid]
+                    });
+                }
+            } else {
+                // Add new reaction
+                await firestore.collection('messages').doc(id).update({
+                    [`reactions.${emoji}`]: [currentUserUid]
+                });
+            }
+            setShowReactionPicker(false);
+        } catch (error) {
+            console.error('Error updating reaction:', error);
+        }
+    };
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
@@ -630,6 +672,29 @@ function ChatMessage({ message }) {
         });
     };
 
+    // Common emojis for reactions
+    const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯', '👏'];
+
+    // Render reactions
+    const renderReactions = () => {
+        const reactions = message.reactions || {};
+        const currentUserUid = auth.currentUser?.uid;
+        
+        return Object.entries(reactions).map(([emoji, users]) => {
+            const isUserReacted = users.includes(currentUserUid);
+            return (
+                <div 
+                    key={emoji} 
+                    className={`reaction ${isUserReacted ? 'reacted' : ''}`}
+                    onClick={() => handleReaction(emoji)}
+                >
+                    <span className="reaction-emoji">{emoji}</span>
+                    <span className="reaction-count">{users.length}</span>
+                </div>
+            );
+        });
+    };
+
     return (
         <div 
             className={`message ${messageClass}`}
@@ -674,15 +739,55 @@ function ChatMessage({ message }) {
                         renderTextWithMentions(text)
                     )}
                 </div>
+                {message.reactions && Object.keys(message.reactions).length > 0 && (
+                    <div className="message-reactions">
+                        {renderReactions()}
+                    </div>
+                )}
             </div>
-            {showActions && uid === auth.currentUser?.uid && !isEditing && (
+            {showActions && !isEditing && (
                 <div className="message-actions">
-                    <button onClick={handleEdit} className="action-button edit-button" title="Edit">
-                        ✏️
+                    <button 
+                        onClick={() => setShowReactionPicker(!showReactionPicker)} 
+                        className="action-button reaction-button" 
+                        title="Add Reaction"
+                    >
+                        😀
                     </button>
-                    <button onClick={handleDelete} className="action-button delete-button" title="Delete">
-                        🗑️
-                    </button>
+                    {uid === auth.currentUser?.uid && (
+                        <>
+                            <button onClick={handleEdit} className="action-button edit-button" title="Edit">
+                                ✏️
+                            </button>
+                            <button onClick={handleDelete} className="action-button delete-button" title="Delete">
+                                🗑️
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+            {showReactionPicker && (
+                <div className="reaction-picker">
+                    <div className="reaction-picker-header">
+                        <span>Add Reaction</span>
+                        <button 
+                            onClick={() => setShowReactionPicker(false)}
+                            className="close-picker"
+                        >
+                            ×
+                        </button>
+                    </div>
+                    <div className="reaction-picker-emojis">
+                        {commonEmojis.map(emoji => (
+                            <button
+                                key={emoji}
+                                className="reaction-picker-emoji"
+                                onClick={() => handleReaction(emoji)}
+                            >
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
