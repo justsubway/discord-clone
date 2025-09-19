@@ -37,7 +37,7 @@ function SignIn() {
     const signInWithGoogle = async () => {
         setIsLoading(true);
         try {
-            const provider = new firebase.auth.GoogleAuthProvider();
+        const provider = new firebase.auth.GoogleAuthProvider();
             await auth.signInWithPopup(provider);
         } catch (error) {
             console.error('Sign in error:', error);
@@ -217,7 +217,7 @@ function ChatRoom({ channel }) {
 
     const [messages] = useCollectionData(query, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
-    
+
     // Mention system state
     const [showMentionDropdown, setShowMentionDropdown] = useState(false);
     const [mentionQuery, setMentionQuery] = useState('');
@@ -389,7 +389,7 @@ function ChatRoom({ channel }) {
                         <p>Be the first to send a message!</p>
                     </div>
                 )}
-                <span ref={dummy}></span>
+            <span ref={dummy}></span>
             </div>
 
             <div className="message-input-container">
@@ -433,6 +433,9 @@ function ChatRoom({ channel }) {
         </>
     )
 }
+
+// Global set to track which messages have already played sound
+const playedSoundMessages = new Set();
 
 // Function to play mention sound
 const playMentionSound = () => {
@@ -496,13 +499,13 @@ function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
-    const hasPlayedSound = React.useRef(false);
     
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
         const isMentioned = isUserMentioned(text, auth.currentUser);
         const isNotMyMessage = uid !== auth.currentUser?.uid;
-        const notPlayedYet = !hasPlayedSound.current;
+        const messageKey = `${id}-${text}`; // Unique key for this specific message
+        const notPlayedYet = !playedSoundMessages.has(messageKey);
         
         console.log('Sound check:', {
             messageText: text,
@@ -511,6 +514,7 @@ function ChatMessage({ message }) {
             isMentioned,
             isNotMyMessage,
             notPlayedYet,
+            messageKey,
             shouldPlay: isMentioned && isNotMyMessage && notPlayedYet
         });
         
@@ -521,7 +525,7 @@ function ChatMessage({ message }) {
         if (isMentioned && isNotMyMessage && notPlayedYet) {
             console.log('🎵 Playing mention sound!');
             playMentionSound();
-            hasPlayedSound.current = true;
+            playedSoundMessages.add(messageKey);
         }
     }, [text, id, uid]);
     
