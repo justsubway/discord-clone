@@ -413,7 +413,7 @@ function ChatRoom({ channel }) {
                         <p>Be the first to send a message!</p>
                     </div>
                 )}
-                <span ref={dummy}></span>
+            <span ref={dummy}></span>
             </div>
 
             <div className="message-input-container">
@@ -529,55 +529,88 @@ function ChatMessage({ message }) {
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
+    const reactionPickerRef = useRef(null);
     
     // Common emojis for reactions
     const commonEmojis = ['👍', '👎', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯'];
     
+    // Close reaction picker when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (reactionPickerRef.current && !reactionPickerRef.current.contains(event.target)) {
+                setShowReactionPicker(false);
+            }
+        };
+        
+        if (showReactionPicker) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showReactionPicker]);
+    
     // Add or remove reaction
     const toggleReaction = async (emoji) => {
         if (!auth.currentUser) {
-            console.log('No current user for reaction');
+            console.log('❌ No current user for reaction');
             return;
         }
         
         console.log('🎭 Toggling reaction:', emoji);
         console.log('Message ID:', id);
         console.log('Current reactions:', reactions);
+        console.log('Current user UID:', auth.currentUser.uid);
         
         const messageRef = firestore.collection('messages').doc(id);
         const currentReactions = reactions || {};
         const userUid = auth.currentUser.uid;
         
         try {
+            // First, let's check if the document exists
+            const docSnapshot = await messageRef.get();
+            if (!docSnapshot.exists) {
+                console.error('❌ Message document does not exist!');
+                return;
+            }
+            console.log('✅ Message document exists');
+            
             if (currentReactions[emoji] && currentReactions[emoji].includes(userUid)) {
-                console.log('Removing reaction:', emoji);
+                console.log('🔄 Removing reaction:', emoji);
                 // Remove reaction
                 const updatedUsers = currentReactions[emoji].filter(uid => uid !== userUid);
                 if (updatedUsers.length === 0) {
                     // Remove emoji entirely if no users left
                     const { [emoji]: removed, ...rest } = currentReactions;
                     await messageRef.update({ reactions: rest });
-                    console.log('Removed emoji entirely');
+                    console.log('✅ Removed emoji entirely');
                 } else {
                     // Update users list
                     await messageRef.update({
                         [`reactions.${emoji}`]: updatedUsers
                     });
-                    console.log('Updated users list:', updatedUsers);
+                    console.log('✅ Updated users list:', updatedUsers);
                 }
             } else {
-                console.log('Adding reaction:', emoji);
+                console.log('➕ Adding reaction:', emoji);
                 // Add reaction
                 const currentUsers = currentReactions[emoji] || [];
                 const newUsers = [...currentUsers, userUid];
+                
+                console.log('Current users for emoji:', currentUsers);
+                console.log('New users array:', newUsers);
+                
                 await messageRef.update({
                     [`reactions.${emoji}`]: newUsers
                 });
-                console.log('Added reaction with users:', newUsers);
+                console.log('✅ Added reaction with users:', newUsers);
             }
             setShowReactionPicker(false);
         } catch (error) {
-            console.error('Error updating reaction:', error);
+            console.error('❌ Error updating reaction:', error);
+            console.error('Error details:', error.message);
+            console.error('Error code:', error.code);
         }
     };
     
@@ -703,33 +736,21 @@ function ChatMessage({ message }) {
                     </div>
                 )}
                 
-                {/* Quick Reaction Buttons */}
+                {/* Add Reaction Button - Only show on hover */}
                 <div className="message-actions">
-                    <div className="quick-reactions">
-                        {['👍', '❤️', '😂', '😮'].map(emoji => (
-                            <button
-                                key={emoji}
-                                className="quick-reaction-btn"
-                                onClick={() => toggleReaction(emoji)}
-                                title={`React with ${emoji}`}
-                            >
-                                {emoji}
-                            </button>
-                        ))}
-                    </div>
                     <button 
                         className="add-reaction-btn"
                         onClick={() => setShowReactionPicker(!showReactionPicker)}
-                        title="More Reactions"
+                        title="Add Reaction"
                     >
                         <span className="reaction-icon">😀</span>
-                        <span className="reaction-text">More</span>
+                        <span className="reaction-text">React</span>
                     </button>
                 </div>
                 
                 {/* Reaction Picker */}
                 {showReactionPicker && (
-                    <div className="reaction-picker">
+                    <div className="reaction-picker" ref={reactionPickerRef}>
                         <div className="reaction-picker-header">
                             <span>Add Reaction</span>
                             <button 

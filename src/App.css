@@ -436,38 +436,16 @@ html, body {
 }
 
 .message-actions {
-  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  margin-top: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.quick-reactions {
-  display: flex;
-  gap: 4px;
-}
-
-.quick-reaction-btn {
-  background: #2f3136;
-  border: 1px solid #40444b;
-  color: #8e9297;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.15s ease;
-  min-width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.quick-reaction-btn:hover {
-  background-color: #40444b;
-  border-color: #5865f2;
-  color: #dcddde;
-  transform: scale(1.1);
+.message:hover .message-actions {
+  opacity: 1;
 }
 
 .add-reaction-btn {
