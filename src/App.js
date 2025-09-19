@@ -217,6 +217,13 @@ function ChatRoom({ channel }) {
     const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
 
     const [messages] = useCollectionData(query, { idField: 'id' });
+    
+    // Debug: Check if messages have IDs
+    React.useEffect(() => {
+        if (messages && messages.length > 0) {
+            console.log('🔍 Message IDs check:', messages.map(msg => ({ id: msg.id, text: msg.text?.substring(0, 20) })));
+        }
+    }, [messages]);
     const [formValue, setFormValue] = useState('');
 
     // Mention system state
@@ -555,6 +562,11 @@ function ChatMessage({ message }) {
     const toggleReaction = async (emoji) => {
         if (!auth.currentUser) {
             console.log('❌ No current user for reaction');
+            return;
+        }
+        
+        if (!id) {
+            console.error('❌ Message ID is undefined! Cannot add reaction.');
             return;
         }
         
