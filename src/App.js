@@ -434,8 +434,13 @@ function ChatRoom({ channel }) {
     )
 }
 
-// Global set to track which messages have already played sound
-const playedSoundMessages = new Set();
+// Function to get or create the played sound messages set
+const getPlayedSoundMessages = () => {
+    if (!window.playedSoundMessages) {
+        window.playedSoundMessages = new Set();
+    }
+    return window.playedSoundMessages;
+};
 
 // Function to play mention sound
 const playMentionSound = () => {
@@ -505,9 +510,10 @@ function ChatMessage({ message }) {
         const isMentioned = isUserMentioned(text, auth.currentUser);
         const isNotMyMessage = uid !== auth.currentUser?.uid;
         const messageKey = `${id}-${text}`; // Unique key for this specific message
+        const playedSoundMessages = getPlayedSoundMessages();
         const notPlayedYet = !playedSoundMessages.has(messageKey);
         
-        console.log('Sound check:', {
+        console.log('🔍 Sound check for message:', {
             messageText: text,
             messageUid: uid,
             currentUserUid: auth.currentUser?.uid,
@@ -515,7 +521,8 @@ function ChatMessage({ message }) {
             isNotMyMessage,
             notPlayedYet,
             messageKey,
-            shouldPlay: isMentioned && isNotMyMessage && notPlayedYet
+            shouldPlay: isMentioned && isNotMyMessage && notPlayedYet,
+            playedSoundMessagesSize: playedSoundMessages.size
         });
         
         // Only play sound if:
@@ -526,6 +533,13 @@ function ChatMessage({ message }) {
             console.log('🎵 Playing mention sound!');
             playMentionSound();
             playedSoundMessages.add(messageKey);
+            console.log('✅ Sound marked as played for message:', messageKey);
+        } else {
+            console.log('❌ Sound not played. Reasons:', {
+                isMentioned,
+                isNotMyMessage,
+                notPlayedYet
+            });
         }
     }, [text, id, uid]);
     
