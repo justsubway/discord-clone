@@ -462,22 +462,46 @@ const playMentionSound = () => {
 const isUserMentioned = (messageText, currentUser) => {
     if (!currentUser || !messageText) return false;
     
-    const displayName = currentUser.displayName || 'Anonymous';
-    const mentionPattern = new RegExp(`@${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-    return mentionPattern.test(messageText);
+    // Get the current user's display name (handle both regular and guest users)
+    let displayName;
+    if (currentUser.isAnonymous) {
+        const guestCode = localStorage.getItem('guestCode');
+        displayName = `Guest ${guestCode || 'XXXX'}`;
+    } else {
+        displayName = currentUser.displayName || 'Anonymous';
+    }
+    
+    // Create a regex pattern that matches @displayName with word boundaries
+    const escapedName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mentionPattern = new RegExp(`@${escapedName}\\b`, 'i');
+    
+    const isMentioned = mentionPattern.test(messageText);
+    
+    // Only log when actually mentioned to reduce console spam
+    if (isMentioned) {
+        console.log('User mentioned!', {
+            messageText,
+            displayName,
+            pattern: mentionPattern
+        });
+    }
+    
+    return isMentioned;
 };
 
 function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
-    const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
+    const hasPlayedSound = React.useRef(false);
     
-    // Check if current user is mentioned and play sound
+    // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
-        if (isUserMentioned(text, auth.currentUser) && messageClass === 'received') {
+        if (isUserMentioned(text, auth.currentUser) && messageClass === 'received' && !hasPlayedSound.current) {
             playMentionSound();
+            hasPlayedSound.current = true;
         }
-    }, [text, messageClass]);
+    }, [text, messageClass, id]);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
