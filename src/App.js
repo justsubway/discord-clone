@@ -23,10 +23,26 @@ const firestore = firebase.firestore();
 
 function App() {
     const [user] = useAuthState(auth);
+    const [notificationPermission, setNotificationPermission] = useState('default');
+
+    // Request notification permission on app start
+    React.useEffect(() => {
+        if ('Notification' in window) {
+            if (Notification.permission === 'granted') {
+                setNotificationPermission('granted');
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    setNotificationPermission(permission);
+                });
+            } else {
+                setNotificationPermission('denied');
+            }
+        }
+    }, []);
 
     return (
         <div className={`App ${user ? 'discord-layout' : ''}`}>
-            {user ? <DiscordLayout /> : <SignIn />}
+            {user ? <DiscordLayout notificationPermission={notificationPermission} /> : <SignIn />}
         </div>
     );
 }
@@ -141,13 +157,47 @@ function SignIn() {
     )
 }
 
-function DiscordLayout() {
+function DiscordLayout({ notificationPermission }) {
     const [selectedChannel, setSelectedChannel] = useState('general');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     const searchTimeoutRef = useRef(null);
+    const [isPageVisible, setIsPageVisible] = useState(!document.hidden);
+
+    // Handle page visibility change
+    React.useEffect(() => {
+        const handleVisibilityChange = () => {
+            setIsPageVisible(!document.hidden);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
+    // Show notification function
+    const showNotification = (title, body, icon) => {
+        if (notificationPermission === 'granted' && !isPageVisible) {
+            const notification = new Notification(title, {
+                body,
+                icon: icon || '/SuperChat.png',
+                badge: '/SuperChat.png',
+                tag: 'discord-clone-notification'
+            });
+
+            // Close notification after 5 seconds
+            setTimeout(() => {
+                notification.close();
+            }, 5000);
+
+            // Focus window when notification is clicked
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+        }
+    };
 
     // Search messages
     const searchMessages = async (query) => {
@@ -293,7 +343,7 @@ function DiscordLayout() {
                                 <div className="search-loading">Searching...</div>
                             ) : searchResults.length > 0 ? (
                                 searchResults.map(message => (
-                                    <ChatMessage key={message.id} message={message} />
+                                    <ChatMessage key={message.id} message={message} showNotification={showNotification} />
                                 ))
                             ) : (
                                 <div className="no-results">No messages found</div>
@@ -302,13 +352,13 @@ function DiscordLayout() {
                     </div>
                 )}
                 
-                <ChatRoom channel={selectedChannel} />
+                <ChatRoom channel={selectedChannel} showNotification={showNotification} />
             </div>
         </>
     );
 }
 
-function ChatRoom({ channel }) {
+function ChatRoom({ channel, showNotification }) {
     const dummy = useRef();
     const messagesRef = firestore.collection('messages');
     
@@ -577,9 +627,9 @@ function ChatRoom({ channel }) {
             }
 
             const messageData = {
-                text: formValue,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                uid,
+            text: formValue,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            uid,
                 photoURL,
                 displayName: displayNameWithCode,
                 channel: channel || 'general',
@@ -642,7 +692,7 @@ function ChatRoom({ channel }) {
         <>
             <div className="messages-container">
                 {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} showNotification={showNotification} />)
                 ) : (
                     <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
                         <p>No messages in #{channel} yet</p>
@@ -749,8 +799,8 @@ const getPlayedSoundMessages = () => {
     return window.playedSoundMessages;
 };
 
-// Function to play mention sound
-const playMentionSound = () => {
+// Function to play mention sound and show notification
+const playMentionSound = (showNotification) => {
     try {
         // Create a simple beep sound using Web Audio API
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -807,7 +857,7 @@ const isUserMentioned = (messageText, currentUser) => {
     return isMentioned;
 };
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, showNotification }) {
     console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, fileURL, fileType, fileName, isFile } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
@@ -844,6 +894,21 @@ function ChatMessage({ message }) {
         if (isMentioned && isNotMyMessage && notPlayedYet) {
             console.log('🎵 Playing mention sound!');
             playMentionSound();
+            
+            // Show desktop notification
+            if (showNotification) {
+                const currentUser = auth.currentUser;
+                const displayName = currentUser?.isAnonymous 
+                    ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}`
+                    : (currentUser?.displayName || 'Anonymous');
+                
+                showNotification(
+                    'You were mentioned!',
+                    `${displayName} mentioned you in #${message.channel || 'general'}`,
+                    photoURL
+                );
+            }
+            
             playedSoundMessages.add(messageKey);
             console.log('✅ Sound marked as played for message:', messageKey);
         } else {
