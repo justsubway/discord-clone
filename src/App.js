@@ -462,6 +462,9 @@ const playMentionSound = () => {
 const isUserMentioned = (messageText, currentUser) => {
     if (!currentUser || !messageText) return false;
     
+    // Quick check: if message doesn't contain @, no mention possible
+    if (!messageText.includes('@')) return false;
+    
     // Get the current user's display name (handle both regular and guest users)
     let displayName;
     if (currentUser.isAnonymous) {
@@ -479,7 +482,7 @@ const isUserMentioned = (messageText, currentUser) => {
     
     // Only log when actually mentioned to reduce console spam
     if (isMentioned) {
-        console.log('User mentioned!', {
+        console.log('✅ User mentioned!', {
             messageText,
             displayName,
             pattern: mentionPattern
@@ -498,30 +501,29 @@ function ChatMessage({ message }) {
     // Check if current user is mentioned and play sound (only once per message)
     React.useEffect(() => {
         const isMentioned = isUserMentioned(text, auth.currentUser);
-        const isReceived = messageClass === 'received';
-        const isNotOwnMessage = uid !== auth.currentUser?.uid;
+        const isNotMyMessage = uid !== auth.currentUser?.uid;
         const notPlayedYet = !hasPlayedSound.current;
         
         console.log('Sound check:', {
-            isMentioned,
-            isReceived,
-            isNotOwnMessage,
-            notPlayedYet,
             messageText: text,
             messageUid: uid,
-            currentUserUid: auth.currentUser?.uid
+            currentUserUid: auth.currentUser?.uid,
+            isMentioned,
+            isNotMyMessage,
+            notPlayedYet,
+            shouldPlay: isMentioned && isNotMyMessage && notPlayedYet
         });
         
         // Only play sound if:
         // 1. Current user is mentioned in the message
-        // 2. This is a received message (not sent by current user)
+        // 2. This is NOT my message (someone else sent it)
         // 3. Sound hasn't been played for this message yet
-        if (isMentioned && isReceived && isNotOwnMessage && notPlayedYet) {
-            console.log('Playing mention sound!');
+        if (isMentioned && isNotMyMessage && notPlayedYet) {
+            console.log('🎵 Playing mention sound!');
             playMentionSound();
             hasPlayedSound.current = true;
         }
-    }, [text, messageClass, id, uid]);
+    }, [text, id, uid]);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
