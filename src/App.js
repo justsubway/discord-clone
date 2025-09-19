@@ -24,26 +24,86 @@ function App() {
     const [user] = useAuthState(auth);
 
     return (
-        <div className="App">
+        <div className={`App ${user ? 'discord-layout' : ''}`}>
             {user ? <DiscordLayout /> : <SignIn />}
         </div>
     );
 }
 
 function SignIn() {
-    const signInWithGoogle = () => {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        auth.signInWithPopup(provider);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isGuestLoading, setIsGuestLoading] = useState(false);
+
+    const signInWithGoogle = async () => {
+        setIsLoading(true);
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+        } catch (error) {
+            console.error('Sign in error:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    const signInAsGuest = async () => {
+        setIsGuestLoading(true);
+        try {
+            // Create anonymous user
+            await auth.signInAnonymously();
+        } catch (error) {
+            console.error('Guest sign in error:', error);
+        } finally {
+            setIsGuestLoading(false);
+        }
     }
 
     return (
         <div className="sign-in-container">
             <div className="sign-in-card">
-                <h1 className="sign-in-title">Welcome back!</h1>
-                <p className="sign-in-subtitle">We're excited to see you again!</p>
-                <button className="sign-in-button" onClick={signInWithGoogle}>
-                    Sign in with Google
-                </button>
+                <div className="sign-in-header">
+                    <div className="discord-brand">
+                        <img 
+                            className="discord-logo" 
+                            src="/SuperChat.png" 
+                            alt="SuperChat Logo"
+                        />
+                        <div className="discord-text">SuperChat</div>
+                    </div>
+                    <h1 className="sign-in-title">Welcome back!</h1>
+                    <p className="sign-in-subtitle">
+                        We're excited to see you again!<br />
+                        Sign in to continue to your server.
+                    </p>
+                </div>
+                
+                <div className="sign-in-form">
+                    <button 
+                        className="sign-in-button sign-in-google" 
+                        onClick={signInWithGoogle}
+                        disabled={isLoading || isGuestLoading}
+                    >
+                        {isLoading ? 'Signing in...' : 'Sign in with Google'}
+                    </button>
+                    
+                    <div className="sign-in-divider">
+                        <span>or</span>
+                    </div>
+                    
+                    <button 
+                        className="sign-in-button sign-in-guest" 
+                        onClick={signInAsGuest}
+                        disabled={isLoading || isGuestLoading}
+                    >
+                        {isGuestLoading ? 'Signing in...' : 'Continue as Guest'}
+                    </button>
+                </div>
+                
+                <div className="sign-in-footer">
+                    <p className="sign-in-footer-text">
+                        By signing in, you agree to our Terms of Service and Privacy Policy.
+                    </p>
+                </div>
             </div>
         </div>
     )
@@ -63,7 +123,15 @@ function DiscordLayout() {
             {/* Channel Sidebar */}
             <div className="channel-sidebar">
                 <div className="server-header">
-                    <span>SuperChat Server</span>
+                    <div className="server-header-left">
+                        <img 
+                            className="server-header-logo" 
+                            src="/SuperChat.png" 
+                            alt="SuperChat Logo"
+                        />
+                        <span>SuperChat Server</span>
+                    </div>
+                    <SignOut />
                 </div>
                 
                 <div className="channel-categories">
@@ -115,14 +183,14 @@ function ChatRoom({ channel }) {
     const sendMessage = async (e) => {
         e.preventDefault();
 
-        const { uid, photoURL, displayName } = auth.currentUser;
+        const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
 
         await messagesRef.add({
             text: formValue,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             uid,
             photoURL,
-            displayName: displayName || 'Anonymous',
+            displayName: displayName || (isAnonymous ? 'Guest' : 'Anonymous'),
             channel: channel || 'general'
         })
 
@@ -182,6 +250,13 @@ function ChatMessage({ message }) {
         }
     };
 
+    // Determine display name - check if user is anonymous (guest)
+    const getDisplayName = () => {
+        if (displayName) return displayName;
+        if (auth.currentUser?.isAnonymous) return 'Guest';
+        return 'Anonymous';
+    };
+
     return (
         <div className={`message ${messageClass}`}>
             <img 
@@ -192,7 +267,7 @@ function ChatMessage({ message }) {
             <div className="message-content">
                 <div className="message-header">
                     <span className="message-author">
-                        {displayName || 'Anonymous'}
+                        {getDisplayName()}
                     </span>
                     <span className="message-timestamp">
                         {formatTime(createdAt)}
