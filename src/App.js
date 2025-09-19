@@ -535,7 +535,14 @@ function ChatMessage({ message }) {
     
     // Add or remove reaction
     const toggleReaction = async (emoji) => {
-        if (!auth.currentUser) return;
+        if (!auth.currentUser) {
+            console.log('No current user for reaction');
+            return;
+        }
+        
+        console.log('🎭 Toggling reaction:', emoji);
+        console.log('Message ID:', id);
+        console.log('Current reactions:', reactions);
         
         const messageRef = firestore.collection('messages').doc(id);
         const currentReactions = reactions || {};
@@ -543,24 +550,30 @@ function ChatMessage({ message }) {
         
         try {
             if (currentReactions[emoji] && currentReactions[emoji].includes(userUid)) {
+                console.log('Removing reaction:', emoji);
                 // Remove reaction
                 const updatedUsers = currentReactions[emoji].filter(uid => uid !== userUid);
                 if (updatedUsers.length === 0) {
                     // Remove emoji entirely if no users left
                     const { [emoji]: removed, ...rest } = currentReactions;
                     await messageRef.update({ reactions: rest });
+                    console.log('Removed emoji entirely');
                 } else {
                     // Update users list
                     await messageRef.update({
                         [`reactions.${emoji}`]: updatedUsers
                     });
+                    console.log('Updated users list:', updatedUsers);
                 }
             } else {
+                console.log('Adding reaction:', emoji);
                 // Add reaction
                 const currentUsers = currentReactions[emoji] || [];
+                const newUsers = [...currentUsers, userUid];
                 await messageRef.update({
-                    [`reactions.${emoji}`]: [...currentUsers, userUid]
+                    [`reactions.${emoji}`]: newUsers
                 });
+                console.log('Added reaction with users:', newUsers);
             }
             setShowReactionPicker(false);
         } catch (error) {
@@ -690,14 +703,27 @@ function ChatMessage({ message }) {
                     </div>
                 )}
                 
-                {/* Add Reaction Button */}
+                {/* Quick Reaction Buttons */}
                 <div className="message-actions">
+                    <div className="quick-reactions">
+                        {['👍', '❤️', '😂', '😮'].map(emoji => (
+                            <button
+                                key={emoji}
+                                className="quick-reaction-btn"
+                                onClick={() => toggleReaction(emoji)}
+                                title={`React with ${emoji}`}
+                            >
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
                     <button 
                         className="add-reaction-btn"
                         onClick={() => setShowReactionPicker(!showReactionPicker)}
-                        title="Add Reaction"
+                        title="More Reactions"
                     >
-                        😀
+                        <span className="reaction-icon">😀</span>
+                        <span className="reaction-text">More</span>
                     </button>
                 </div>
                 
