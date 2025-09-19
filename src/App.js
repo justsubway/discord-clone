@@ -186,7 +186,7 @@ function DiscordLayout() {
                 return new Set([selectedChannel]);
             });
         }
-    }, [indicatorMessages, selectedChannel]);
+    }, [indicatorMessages, selectedChannel, auth.currentUser]);
 
     // Check for mentions and unread messages
     React.useEffect(() => {
@@ -227,18 +227,12 @@ function DiscordLayout() {
             unreadChannels: Array.from(newUnreadChannels),
             mentionedChannels: Array.from(newMentionedChannels),
             readChannels: Array.from(readChannels),
-            selectedChannel,
-            totalMessages: indicatorMessages.length,
-            recentMessages: indicatorMessages.filter(msg => {
-                const messageTime = msg.createdAt?.toDate();
-                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-                return messageTime && messageTime > tenMinutesAgo;
-            }).length
+            selectedChannel
         });
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages, readChannels]);
+    }, [indicatorMessages, readChannels, auth.currentUser]);
     
     return (
         <>
@@ -333,11 +327,10 @@ function ChatRoom({ channel }) {
         ...doc.data()
     })) || [];
     
-    // Debug: Check if messages have IDs
+    // Debug: Check if messages have IDs (reduced logging)
     React.useEffect(() => {
         if (messages && messages.length > 0) {
-            console.log('🔍 Message IDs check:', messages.map(msg => ({ id: msg.id, text: msg.text?.substring(0, 20) })));
-            console.log('🔍 First message full object:', messages[0]);
+            console.log('🔍 Message IDs check:', messages.length, 'messages loaded');
         }
     }, [messages]);
     const [formValue, setFormValue] = useState('');
@@ -420,14 +413,8 @@ function ChatRoom({ channel }) {
         }
     }, [messages, lastMessageId]);
 
-    // Debug logging for messages
-    console.log('=== CHATROOM DEBUG ===');
-    console.log('Current channel:', channel);
-    console.log('Raw messages from Firestore:', messages);
-    console.log('Messages type:', typeof messages);
-    console.log('Messages length:', messages ? messages.length : 'null');
-    console.log('Query:', query);
-    console.log('Unique users:', uniqueUsers);
+    // Debug logging for messages (reduced)
+    console.log('=== CHATROOM DEBUG ===', channel, messages?.length || 0, 'messages');
 
     // Handle input change for mention detection
     const handleInputChange = (e) => {
@@ -540,16 +527,6 @@ function ChatRoom({ channel }) {
         : [];
 
     console.log('Filtered messages count:', filteredMessages.length);
-    console.log('Filtered messages:', filteredMessages);
-    
-    // Debug: Check if messages have the required properties
-    if (filteredMessages.length > 0) {
-        console.log('First filtered message:', filteredMessages[0]);
-        console.log('Last filtered message:', filteredMessages[filteredMessages.length - 1]);
-        console.log('Message has text:', !!filteredMessages[0].text);
-        console.log('Message has id:', !!filteredMessages[0].id);
-        console.log('Total messages in database:', messages ? messages.length : 0);
-    }
 
     return (
         <>
@@ -674,7 +651,7 @@ const isUserMentioned = (messageText, currentUser) => {
 };
 
 function ChatMessage({ message }) {
-    console.log('Rendering ChatMessage:', message);
+    // console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
