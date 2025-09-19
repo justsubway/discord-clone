@@ -590,6 +590,132 @@ html, body {
   background: #40444b;
 }
 
+/* File Sharing */
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.file-name {
+  color: #dcddde;
+  flex: 1;
+}
+
+.remove-file {
+  background: none;
+  border: none;
+  color: #b9bbbe;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.remove-file:hover {
+  background: #40444b;
+  color: #ffffff;
+}
+
+.file-upload-button {
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 4px;
+  color: #b9bbbe;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px;
+  margin-right: 8px;
+  transition: all 0.2s ease;
+}
+
+.file-upload-button:hover {
+  background: #40444b;
+  color: #ffffff;
+}
+
+/* File Attachments */
+.file-attachment {
+  margin-top: 8px;
+}
+
+.file-image {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.file-image:hover {
+  transform: scale(1.02);
+}
+
+.file-video {
+  max-width: 400px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.file-audio {
+  width: 100%;
+  max-width: 300px;
+}
+
+.file-download {
+  display: flex;
+  align-items: center;
+  background: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  max-width: 300px;
+}
+
+.file-download:hover {
+  background: #40444b;
+  border-color: #5865f2;
+}
+
+.file-icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.file-info {
+  flex: 1;
+}
+
+.file-info .file-name {
+  color: #dcddde;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.file-info .file-type {
+  color: #b9bbbe;
+  font-size: 12px;
+}
+
+.download-icon {
+  font-size: 16px;
+  color: #b9bbbe;
+}
+
 /* Sign In Styles */
 .sign-in-container {
   display: flex;

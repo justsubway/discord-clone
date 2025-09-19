@@ -4,6 +4,7 @@ import './App.css';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
+import 'firebase/compat/storage';
 
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
@@ -223,6 +224,11 @@ function ChatRoom({ channel }) {
     const [mentionQuery, setMentionQuery] = useState('');
     const [mentionPosition, setMentionPosition] = useState(0);
     const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+    
+    // File upload state
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef(null);
 
     // Get unique users from messages for mention autocomplete
     const getUniqueUsers = () => {
@@ -313,12 +319,42 @@ function ChatRoom({ channel }) {
         }
     };
 
+    // Handle file selection
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Check file size (max 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                alert('File size must be less than 10MB');
+                return;
+            }
+            setSelectedFile(file);
+        }
+    };
+
+    // Handle file upload
+    const uploadFile = async (file) => {
+        const storage = firebase.storage();
+        const storageRef = storage.ref();
+        const fileRef = storageRef.child(`uploads/${Date.now()}_${file.name}`);
+        
+        try {
+            const snapshot = await fileRef.put(file);
+            const downloadURL = await snapshot.ref.getDownloadURL();
+            return downloadURL;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            throw error;
+        }
+    };
+
     const sendMessage = async (e) => {
         e.preventDefault();
 
         console.log('=== SENDING MESSAGE ===');
         console.log('Form value:', formValue);
         console.log('Current channel:', channel);
+        console.log('Selected file:', selectedFile);
 
         const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
         console.log('User info:', { uid, photoURL, displayName, isAnonymous });
@@ -329,28 +365,55 @@ function ChatRoom({ channel }) {
             ? `Guest ${guestCode || 'XXXX'}` 
             : (displayName || 'Anonymous');
 
-        const messageData = {
-            text: formValue,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            uid,
-            photoURL,
-            displayName: displayNameWithCode,
-            channel: channel || 'general',
-            guestCode: guestCode || null
-        };
-
-        console.log('Message data to send:', messageData);
+        setIsUploading(true);
 
         try {
+            let fileURL = null;
+            let fileType = null;
+            let fileName = null;
+
+            // Upload file if selected
+            if (selectedFile) {
+                fileURL = await uploadFile(selectedFile);
+                fileType = selectedFile.type;
+                fileName = selectedFile.name;
+            }
+
+            const messageData = {
+                text: formValue,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                uid,
+                photoURL,
+                displayName: displayNameWithCode,
+                channel: channel || 'general',
+                guestCode: guestCode || null,
+                ...(fileURL && { 
+                    fileURL, 
+                    fileType, 
+                    fileName,
+                    isFile: true 
+                })
+            };
+
+            console.log('Message data to send:', messageData);
+
             const docRef = await messagesRef.add(messageData);
             console.log('Message sent successfully with ID:', docRef.id);
+
+            // Reset form
+            setFormValue('');
+            setSelectedFile(null);
+            setShowMentionDropdown(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+            dummy.current.scrollIntoView({ behavior: 'smooth' });
         } catch (error) {
             console.error('Error sending message:', error);
+            alert('Error sending message. Please try again.');
+        } finally {
+            setIsUploading(false);
         }
-
-        setFormValue('');
-        setShowMentionDropdown(false);
-        dummy.current.scrollIntoView({ behavior: 'smooth' });
     }
 
     // Filter messages for the current channel and reverse to show chronological order
@@ -393,14 +456,46 @@ function ChatRoom({ channel }) {
             </div>
 
             <div className="message-input-container">
+                {selectedFile && (
+                    <div className="file-preview">
+                        <span className="file-name">📎 {selectedFile.name}</span>
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                setSelectedFile(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                            }}
+                            className="remove-file"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
                 <form className="message-input-form" onSubmit={sendMessage}>
                     <div className="input-wrapper">
+                        <input 
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            className="file-input"
+                            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+                            style={{ display: 'none' }}
+                        />
+                        <button 
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="file-upload-button"
+                            title="Upload file"
+                        >
+                            📎
+                        </button>
                         <input 
                             className="message-input"
                             value={formValue} 
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
                             placeholder={`Message #${channel}`}
+                            disabled={isUploading}
                         />
                         {showMentionDropdown && filteredUsers.length > 0 && (
                             <div className="mention-dropdown">
@@ -424,9 +519,9 @@ function ChatRoom({ channel }) {
                     <button 
                         type="submit" 
                         className="message-send-button"
-                        disabled={!formValue}
+                        disabled={(!formValue && !selectedFile) || isUploading}
                     >
-                        ➤
+                        {isUploading ? '⏳' : '➤'}
                     </button>
                 </form>
             </div>
@@ -502,7 +597,7 @@ const isUserMentioned = (messageText, currentUser) => {
 
 function ChatMessage({ message }) {
     console.log('Rendering ChatMessage:', message);
-    const { text, uid, photoURL, displayName, createdAt, guestCode, id } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode, id, fileURL, fileType, fileName, isFile } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(text);
@@ -695,6 +790,53 @@ function ChatMessage({ message }) {
         });
     };
 
+    // Render file content
+    const renderFile = () => {
+        if (!isFile || !fileURL) return null;
+
+        const isImage = fileType?.startsWith('image/');
+        const isVideo = fileType?.startsWith('video/');
+        const isAudio = fileType?.startsWith('audio/');
+
+        return (
+            <div className="file-attachment">
+                {isImage ? (
+                    <img 
+                        src={fileURL} 
+                        alt={fileName || 'Image'} 
+                        className="file-image"
+                        onClick={() => window.open(fileURL, '_blank')}
+                    />
+                ) : isVideo ? (
+                    <video 
+                        src={fileURL} 
+                        controls 
+                        className="file-video"
+                        onClick={() => window.open(fileURL, '_blank')}
+                    />
+                ) : isAudio ? (
+                    <audio 
+                        src={fileURL} 
+                        controls 
+                        className="file-audio"
+                    />
+                ) : (
+                    <div 
+                        className="file-download"
+                        onClick={() => window.open(fileURL, '_blank')}
+                    >
+                        <div className="file-icon">📄</div>
+                        <div className="file-info">
+                            <div className="file-name">{fileName || 'File'}</div>
+                            <div className="file-type">{fileType || 'Unknown type'}</div>
+                        </div>
+                        <div className="download-icon">⬇️</div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div 
             className={`message ${messageClass}`}
@@ -736,7 +878,10 @@ function ChatMessage({ message }) {
                             </div>
                         </div>
                     ) : (
-                        renderTextWithMentions(text)
+                        <>
+                            {renderTextWithMentions(text)}
+                            {renderFile()}
+                        </>
                     )}
                 </div>
                 {message.reactions && Object.keys(message.reactions).length > 0 && (
