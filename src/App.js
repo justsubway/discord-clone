@@ -145,48 +145,62 @@ function DiscordLayout() {
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
     
-    // Track unread messages and mentions
+    // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
-    const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
-    const [messagesSnapshot] = useCollection(query);
+    const indicatorQuery = messagesRef.orderBy('createdAt', 'desc').limit(100);
+    const [indicatorSnapshot] = useCollection(indicatorQuery);
     
-    const messages = messagesSnapshot?.docs.map(doc => ({
+    const indicatorMessages = indicatorSnapshot?.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
     })) || [];
     
     // Check for mentions and unread messages
     React.useEffect(() => {
-        if (!messages || !auth.currentUser) return;
+        if (!indicatorMessages || !auth.currentUser) return;
         
         const currentUser = auth.currentUser;
         const newUnreadChannels = new Set();
         const newMentionedChannels = new Set();
         
-        messages.forEach(msg => {
+        // Only check recent messages (last 10 minutes) to avoid false positives
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        
+        indicatorMessages.forEach(msg => {
             const channel = msg.channel || 'general';
-            
-            // Check if message is unread (you can customize this logic)
-            // For now, we'll consider messages from the last 5 minutes as "unread"
             const messageTime = msg.createdAt?.toDate();
-            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
             
-            if (messageTime && messageTime > fiveMinutesAgo && msg.uid !== currentUser.uid) {
+            // Only process recent messages
+            if (!messageTime || messageTime < tenMinutesAgo) return;
+            
+            // Check if message is unread (only if it's not from current user)
+            if (msg.uid !== currentUser.uid) {
                 newUnreadChannels.add(channel);
             }
             
-            // Check for mentions
-            if (msg.text && msg.text.includes('@')) {
+            // Check for mentions (only if message contains @ and is from someone else)
+            if (msg.text && msg.text.includes('@') && msg.uid !== currentUser.uid) {
                 const isMentioned = isUserMentioned(msg.text, currentUser);
-                if (isMentioned && msg.uid !== currentUser.uid) {
+                if (isMentioned) {
                     newMentionedChannels.add(channel);
                 }
             }
         });
         
+        console.log('🔔 Channel indicators update:', {
+            unreadChannels: Array.from(newUnreadChannels),
+            mentionedChannels: Array.from(newMentionedChannels),
+            totalMessages: indicatorMessages.length,
+            recentMessages: indicatorMessages.filter(msg => {
+                const messageTime = msg.createdAt?.toDate();
+                const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+                return messageTime && messageTime > tenMinutesAgo;
+            }).length
+        });
+        
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [messages]);
+    }, [indicatorMessages]);
     
     return (
         <>
@@ -216,28 +230,28 @@ function DiscordLayout() {
                         </div>
                         <div className="channel-list">
                             <div 
-                                className={`channel ${selectedChannel === 'general' ? 'active' : ''} ${unreadChannels.has('general') ? 'unread' : ''} ${mentionedChannels.has('general') ? 'mentioned' : ''}`}
+                                className={`channel ${selectedChannel === 'general' ? 'active' : ''} ${selectedChannel !== 'general' && unreadChannels.has('general') ? 'unread' : ''} ${selectedChannel !== 'general' && mentionedChannels.has('general') ? 'mentioned' : ''}`}
                                 onClick={() => setSelectedChannel('general')}
                             >
                                 <span className="channel-icon">#</span>
                                 <span>general</span>
-                                {mentionedChannels.has('general') && (
+                                {selectedChannel !== 'general' && mentionedChannels.has('general') && (
                                     <span className="mention-indicator">@</span>
                                 )}
-                                {unreadChannels.has('general') && !mentionedChannels.has('general') && (
+                                {selectedChannel !== 'general' && unreadChannels.has('general') && !mentionedChannels.has('general') && (
                                     <span className="unread-indicator"></span>
                                 )}
                             </div>
                             <div 
-                                className={`channel ${selectedChannel === 'random' ? 'active' : ''} ${unreadChannels.has('random') ? 'unread' : ''} ${mentionedChannels.has('random') ? 'mentioned' : ''}`}
+                                className={`channel ${selectedChannel === 'random' ? 'active' : ''} ${selectedChannel !== 'random' && unreadChannels.has('random') ? 'unread' : ''} ${selectedChannel !== 'random' && mentionedChannels.has('random') ? 'mentioned' : ''}`}
                                 onClick={() => setSelectedChannel('random')}
                             >
                                 <span className="channel-icon">#</span>
                                 <span>random</span>
-                                {mentionedChannels.has('random') && (
+                                {selectedChannel !== 'random' && mentionedChannels.has('random') && (
                                     <span className="mention-indicator">@</span>
                                 )}
-                                {unreadChannels.has('random') && !mentionedChannels.has('random') && (
+                                {selectedChannel !== 'random' && unreadChannels.has('random') && !mentionedChannels.has('random') && (
                                     <span className="unread-indicator"></span>
                                 )}
                             </div>
