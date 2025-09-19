@@ -716,6 +716,55 @@ html, body {
   color: #b9bbbe;
 }
 
+/* Typing Indicators */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  color: #8e9297;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.typing-dots {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #8e9297;
+  margin: 0 1px;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.typing-text {
+  color: #8e9297;
+  font-size: 14px;
+}
+
 /* Sign In Styles */
 .sign-in-container {
   display: flex;

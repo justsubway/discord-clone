@@ -229,6 +229,11 @@ function ChatRoom({ channel }) {
     const [selectedFile, setSelectedFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
+    
+    // Typing indicators state
+    const [typingUsers, setTypingUsers] = useState([]);
+    const [isTyping, setIsTyping] = useState(false);
+    const typingTimeoutRef = useRef(null);
 
     // Get unique users from messages for mention autocomplete
     const getUniqueUsers = () => {
@@ -253,6 +258,44 @@ function ChatRoom({ channel }) {
         user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
     );
 
+    // Listen to typing indicators
+    React.useEffect(() => {
+        const typingRef = firestore.collection('typing');
+        const unsubscribe = typingRef
+            .where('channel', '==', channel)
+            .onSnapshot((snapshot) => {
+                const typingData = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                
+                // Filter out current user and expired typing indicators
+                const now = new Date();
+                const validTyping = typingData.filter(data => {
+                    const isNotCurrentUser = data.uid !== auth.currentUser?.uid;
+                    const isRecent = data.timestamp && 
+                        (now - data.timestamp.toDate()) < 5000; // 5 seconds
+                    return isNotCurrentUser && isRecent;
+                });
+                
+                setTypingUsers(validTyping);
+            });
+
+        return () => unsubscribe();
+    }, [channel]);
+
+    // Cleanup typing status on unmount
+    React.useEffect(() => {
+        return () => {
+            if (isTyping) {
+                updateTypingStatus(false);
+            }
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+        };
+    }, [isTyping]);
+
     // Debug logging for messages
     console.log('=== CHATROOM DEBUG ===');
     console.log('Current channel:', channel);
@@ -262,7 +305,7 @@ function ChatRoom({ channel }) {
     console.log('Query:', query);
     console.log('Unique users:', uniqueUsers);
 
-    // Handle input change for mention detection
+    // Handle input change for mention detection and typing indicators
     const handleInputChange = (e) => {
         const value = e.target.value;
         const cursorPosition = e.target.selectionStart;
@@ -282,6 +325,57 @@ function ChatRoom({ channel }) {
         }
         
         setFormValue(value);
+        
+        // Handle typing indicators
+        if (value.trim() && !isTyping) {
+            setIsTyping(true);
+            updateTypingStatus(true);
+        } else if (!value.trim() && isTyping) {
+            setIsTyping(false);
+            updateTypingStatus(false);
+        }
+        
+        // Reset typing timeout
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        
+        // Set timeout to stop typing indicator
+        typingTimeoutRef.current = setTimeout(() => {
+            if (isTyping) {
+                setIsTyping(false);
+                updateTypingStatus(false);
+            }
+        }, 3000);
+    };
+
+    // Update typing status in Firestore
+    const updateTypingStatus = async (typing) => {
+        try {
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+            
+            const typingRef = firestore.collection('typing').doc(`${channel}_${currentUser.uid}`);
+            
+            if (typing) {
+                const { displayName, isAnonymous } = currentUser;
+                const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
+                const displayNameWithCode = isAnonymous 
+                    ? `Guest ${guestCode || 'XXXX'}` 
+                    : (displayName || 'Anonymous');
+                
+                await typingRef.set({
+                    uid: currentUser.uid,
+                    displayName: displayNameWithCode,
+                    channel: channel,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                await typingRef.delete();
+            }
+        } catch (error) {
+            console.error('Error updating typing status:', error);
+        }
     };
 
     // Handle mention selection
@@ -452,7 +546,22 @@ function ChatRoom({ channel }) {
                         <p>Be the first to send a message!</p>
                     </div>
                 )}
-            <span ref={dummy}></span>
+                {typingUsers.length > 0 && (
+                    <div className="typing-indicator">
+                        <div className="typing-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <span className="typing-text">
+                            {typingUsers.length === 1 
+                                ? `${typingUsers[0].displayName} is typing...`
+                                : `${typingUsers.length} people are typing...`
+                            }
+                        </span>
+                    </div>
+                )}
+                <span ref={dummy}></span>
             </div>
 
             <div className="message-input-container">
