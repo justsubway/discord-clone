@@ -223,7 +223,6 @@ function ChatRoom({ channel }) {
     console.log('Messages type:', typeof messages);
     console.log('Messages length:', messages ? messages.length : 'null');
     console.log('Query:', query);
-    console.log('Simple query:', simpleQuery);
 
     const sendMessage = async (e) => {
         e.preventDefault();
