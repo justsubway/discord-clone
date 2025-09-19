@@ -209,15 +209,32 @@ function DiscordLayout() {
 function ChatRoom({ channel }) {
     const dummy = useRef();
     const messagesRef = firestore.collection('messages');
+    
+    // Try a simpler query first to see if orderBy is causing issues
+    const simpleQuery = messagesRef.limit(25);
     const query = messagesRef.orderBy('createdAt').limit(25);
 
     const [messages] = useCollectionData(query, { idField: 'id' });
     const [formValue, setFormValue] = useState('');
 
+    // Debug logging for messages
+    console.log('=== CHATROOM DEBUG ===');
+    console.log('Current channel:', channel);
+    console.log('Raw messages from Firestore:', messages);
+    console.log('Messages type:', typeof messages);
+    console.log('Messages length:', messages ? messages.length : 'null');
+    console.log('Query:', query);
+    console.log('Simple query:', simpleQuery);
+
     const sendMessage = async (e) => {
         e.preventDefault();
 
+        console.log('=== SENDING MESSAGE ===');
+        console.log('Form value:', formValue);
+        console.log('Current channel:', channel);
+
         const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
+        console.log('User info:', { uid, photoURL, displayName, isAnonymous });
 
         // Get guest code if user is anonymous
         const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
@@ -225,7 +242,7 @@ function ChatRoom({ channel }) {
             ? `Guest ${guestCode || 'XXXX'}` 
             : (displayName || 'Anonymous');
 
-        await messagesRef.add({
+        const messageData = {
             text: formValue,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             uid,
@@ -233,7 +250,16 @@ function ChatRoom({ channel }) {
             displayName: displayNameWithCode,
             channel: channel || 'general',
             guestCode: guestCode || null
-        })
+        };
+
+        console.log('Message data to send:', messageData);
+
+        try {
+            const docRef = await messagesRef.add(messageData);
+            console.log('Message sent successfully with ID:', docRef.id);
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
 
         setFormValue('');
         dummy.current.scrollIntoView({ behavior: 'smooth' });
@@ -241,18 +267,46 @@ function ChatRoom({ channel }) {
 
     // Filter messages for the current channel
     const filteredMessages = messages ? messages.filter(msg => {
+        console.log('Filtering message:', msg);
+        console.log('Message channel:', msg.channel);
+        console.log('Current channel:', channel);
+        
         // If message has channel property, filter by it
         if (msg.channel) {
-            return msg.channel === channel;
+            const matches = msg.channel === channel;
+            console.log('Channel match:', matches);
+            return matches;
         }
         // If message doesn't have channel property (old messages), show in general
-        return channel === 'general';
+        const isGeneral = channel === 'general';
+        console.log('Is general channel:', isGeneral);
+        return isGeneral;
     }) : [];
+
+    console.log('Filtered messages count:', filteredMessages.length);
+    console.log('Filtered messages:', filteredMessages);
 
     return (
         <>
             <div className="messages-container">
-                {filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)}
+                {filteredMessages.length > 0 ? (
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
+                ) : (
+                    <div style={{color: 'white', padding: '20px', textAlign: 'center'}}>
+                        <p>No messages found. Debug info:</p>
+                        <p>Total messages: {messages ? messages.length : 'null'}</p>
+                        <p>Filtered messages: {filteredMessages.length}</p>
+                        <p>Current channel: {channel}</p>
+                        {messages && messages.length > 0 && (
+                            <div>
+                                <p>Sample message channels:</p>
+                                {messages.slice(0, 3).map((msg, i) => (
+                                    <p key={i}>Message {i}: channel="{msg.channel}"</p>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <span ref={dummy}></span>
             </div>
 
@@ -278,8 +332,15 @@ function ChatRoom({ channel }) {
 }
 
 function ChatMessage({ message }) {
+    console.log('=== RENDERING MESSAGE ===');
+    console.log('Message data:', message);
+    
     const { text, uid, photoURL, displayName, createdAt, guestCode } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
+    
+    console.log('Message class:', messageClass);
+    console.log('Text:', text);
+    console.log('Display name:', displayName);
     
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
