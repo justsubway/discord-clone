@@ -142,6 +142,51 @@ function SignIn() {
 
 function DiscordLayout() {
     const [selectedChannel, setSelectedChannel] = useState('general');
+    const [unreadChannels, setUnreadChannels] = useState(new Set());
+    const [mentionedChannels, setMentionedChannels] = useState(new Set());
+    
+    // Track unread messages and mentions
+    const messagesRef = firestore.collection('messages');
+    const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
+    const [messagesSnapshot] = useCollection(query);
+    
+    const messages = messagesSnapshot?.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    })) || [];
+    
+    // Check for mentions and unread messages
+    React.useEffect(() => {
+        if (!messages || !auth.currentUser) return;
+        
+        const currentUser = auth.currentUser;
+        const newUnreadChannels = new Set();
+        const newMentionedChannels = new Set();
+        
+        messages.forEach(msg => {
+            const channel = msg.channel || 'general';
+            
+            // Check if message is unread (you can customize this logic)
+            // For now, we'll consider messages from the last 5 minutes as "unread"
+            const messageTime = msg.createdAt?.toDate();
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            
+            if (messageTime && messageTime > fiveMinutesAgo && msg.uid !== currentUser.uid) {
+                newUnreadChannels.add(channel);
+            }
+            
+            // Check for mentions
+            if (msg.text && msg.text.includes('@')) {
+                const isMentioned = isUserMentioned(msg.text, currentUser);
+                if (isMentioned && msg.uid !== currentUser.uid) {
+                    newMentionedChannels.add(channel);
+                }
+            }
+        });
+        
+        setUnreadChannels(newUnreadChannels);
+        setMentionedChannels(newMentionedChannels);
+    }, [messages]);
     
     return (
         <>
@@ -171,18 +216,30 @@ function DiscordLayout() {
                         </div>
                         <div className="channel-list">
                             <div 
-                                className={`channel ${selectedChannel === 'general' ? 'active' : ''}`}
+                                className={`channel ${selectedChannel === 'general' ? 'active' : ''} ${unreadChannels.has('general') ? 'unread' : ''} ${mentionedChannels.has('general') ? 'mentioned' : ''}`}
                                 onClick={() => setSelectedChannel('general')}
                             >
                                 <span className="channel-icon">#</span>
                                 <span>general</span>
+                                {mentionedChannels.has('general') && (
+                                    <span className="mention-indicator">@</span>
+                                )}
+                                {unreadChannels.has('general') && !mentionedChannels.has('general') && (
+                                    <span className="unread-indicator"></span>
+                                )}
                             </div>
                             <div 
-                                className={`channel ${selectedChannel === 'random' ? 'active' : ''}`}
+                                className={`channel ${selectedChannel === 'random' ? 'active' : ''} ${unreadChannels.has('random') ? 'unread' : ''} ${mentionedChannels.has('random') ? 'mentioned' : ''}`}
                                 onClick={() => setSelectedChannel('random')}
                             >
                                 <span className="channel-icon">#</span>
                                 <span>random</span>
+                                {mentionedChannels.has('random') && (
+                                    <span className="mention-indicator">@</span>
+                                )}
+                                {unreadChannels.has('random') && !mentionedChannels.has('random') && (
+                                    <span className="unread-indicator"></span>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -543,7 +600,10 @@ function ChatMessage({ message }) {
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(text);
     const reactionPickerRef = useRef(null);
+    const editInputRef = useRef(null);
     
     // Common emojis for reactions
     const commonEmojis = ['👍', '👎', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯'];
@@ -564,6 +624,59 @@ function ChatMessage({ message }) {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, [showReactionPicker]);
+
+    // Focus edit input when editing starts
+    React.useEffect(() => {
+        if (isEditing && editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select();
+        }
+    }, [isEditing]);
+
+    // Edit message
+    const handleEditMessage = async () => {
+        if (!editText.trim() || editText === text) {
+            setIsEditing(false);
+            setEditText(text);
+            return;
+        }
+
+        try {
+            const messageRef = firestore.collection('messages').doc(id);
+            await messageRef.update({
+                text: editText.trim(),
+                editedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            setIsEditing(false);
+        } catch (error) {
+            console.error('Error editing message:', error);
+        }
+    };
+
+    // Delete message
+    const handleDeleteMessage = async () => {
+        if (!window.confirm('Are you sure you want to delete this message?')) {
+            return;
+        }
+
+        try {
+            const messageRef = firestore.collection('messages').doc(id);
+            await messageRef.delete();
+        } catch (error) {
+            console.error('Error deleting message:', error);
+        }
+    };
+
+    // Handle edit key press
+    const handleEditKeyPress = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleEditMessage();
+        } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setEditText(text);
+        }
+    };
     
     // Add or remove reaction
     const toggleReaction = async (emoji) => {
@@ -736,7 +849,42 @@ function ChatMessage({ message }) {
                     </span>
                 </div>
                 <div className="message-text">
-                    {renderTextWithMentions(text)}
+                    {isEditing ? (
+                        <div className="edit-message-container">
+                            <textarea
+                                ref={editInputRef}
+                                className="edit-message-input"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onKeyDown={handleEditKeyPress}
+                                rows="1"
+                            />
+                            <div className="edit-message-actions">
+                                <button 
+                                    className="edit-save-btn"
+                                    onClick={handleEditMessage}
+                                >
+                                    Save
+                                </button>
+                                <button 
+                                    className="edit-cancel-btn"
+                                    onClick={() => {
+                                        setIsEditing(false);
+                                        setEditText(text);
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {renderTextWithMentions(text)}
+                            {message.editedAt && (
+                                <span className="edited-indicator">(edited)</span>
+                            )}
+                        </>
+                    )}
                 </div>
                 
                 {/* Reactions */}
@@ -756,7 +904,7 @@ function ChatMessage({ message }) {
                 )}
             </div>
             
-            {/* Add Reaction Button - Side of message */}
+            {/* Message Actions - Side of message */}
             <div className="message-actions">
                 <button 
                     className="add-reaction-btn"
@@ -765,6 +913,26 @@ function ChatMessage({ message }) {
                 >
                     <span className="reaction-icon">😀</span>
                 </button>
+                
+                {/* Edit/Delete buttons for own messages */}
+                {uid === auth.currentUser?.uid && !isEditing && (
+                    <>
+                        <button 
+                            className="edit-message-btn"
+                            onClick={() => setIsEditing(true)}
+                            title="Edit Message"
+                        >
+                            ✏️
+                        </button>
+                        <button 
+                            className="delete-message-btn"
+                            onClick={handleDeleteMessage}
+                            title="Delete Message"
+                        >
+                            🗑️
+                        </button>
+                    </>
+                )}
             </div>
             
             {/* Reaction Picker */}
