@@ -239,7 +239,7 @@ function ChatRoom({ channel }) {
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Filter messages for the current channel, or show all if no channel filter
+    // Filter messages for the current channel
     const filteredMessages = messages ? messages.filter(msg => {
         // If message has channel property, filter by it
         if (msg.channel) {
