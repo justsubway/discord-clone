@@ -22,6 +22,28 @@ const auth = firebase.auth();
 const firestore = firebase.firestore();
 const storage = firebase.storage();
 
+// Function to save/update user in Firestore
+const saveUserToFirestore = async (user, additionalData = {}) => {
+    try {
+        const userRef = firestore.collection('users').doc(user.uid);
+        const userData = {
+            uid: user.uid,
+            displayName: user.displayName || additionalData.displayName || 'User',
+            photoURL: user.photoURL || additionalData.photoURL || '',
+            email: user.email || '',
+            isAnonymous: user.isAnonymous || false,
+            guestCode: additionalData.guestCode || null,
+            lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+            ...additionalData
+        };
+        
+        await userRef.set(userData, { merge: true });
+        console.log('User saved to Firestore:', user.uid);
+    } catch (error) {
+        console.error('Error saving user to Firestore:', error);
+    }
+};
+
 function App() {
     const [user] = useAuthState(auth);
 
@@ -39,8 +61,13 @@ function SignIn() {
     const signInWithGoogle = async () => {
         setIsLoading(true);
         try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-            await auth.signInWithPopup(provider);
+            const provider = new firebase.auth.GoogleAuthProvider();
+            const result = await auth.signInWithPopup(provider);
+            
+            // Save user to Firestore
+            if (result.user) {
+                await saveUserToFirestore(result.user);
+            }
         } catch (error) {
             console.error('Sign in error:', error);
         } finally {
@@ -72,6 +99,15 @@ function SignIn() {
             const guestCode = generateGuestCode();
             localStorage.setItem('guestCode', guestCode);
             console.log('Guest code generated:', guestCode);
+            
+            // Save guest user to Firestore
+            if (result.user) {
+                await saveUserToFirestore(result.user, {
+                    displayName: `Guest ${guestCode}`,
+                    guestCode: guestCode,
+                    isAnonymous: true
+                });
+            }
         } catch (error) {
             console.error('Guest sign in error:', error);
             console.error('Error code:', error.code);
@@ -151,6 +187,22 @@ function DiscordLayout() {
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
     const [members, setMembers] = useState([]);
+    
+    // Function to get the correct avatar for a member
+    const getMemberAvatar = (member) => {
+        // First check if member has a photoURL
+        if (member.photoURL && member.photoURL !== '') {
+            return member.photoURL;
+        }
+        
+        // For guest users, generate avatar based on guest code
+        if (member.isAnonymous && member.guestCode) {
+            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+        }
+        
+        // Default avatar
+        return 'https://api.adorable.io/avatars/32/abott@adorable.png';
+    };
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
@@ -240,7 +292,45 @@ function DiscordLayout() {
         setMentionedChannels(newMentionedChannels);
     }, [indicatorMessages, readChannels, auth.currentUser]);
 
-    // Extract unique members from messages
+    // Load all users from Firestore users collection
+    React.useEffect(() => {
+        const loadAllUsers = async () => {
+            try {
+                const usersRef = firestore.collection('users');
+                const usersSnapshot = await usersRef.get();
+                
+                const allUsers = [];
+                usersSnapshot.forEach(doc => {
+                    const userData = doc.data();
+                    allUsers.push({
+                        uid: doc.id,
+                        displayName: userData.displayName || userData.username || 'Unknown User',
+                        photoURL: userData.photoURL || userData.profilePicture || '',
+                        guestCode: userData.guestCode || null,
+                        isAnonymous: userData.isAnonymous || false,
+                        lastSeen: userData.lastSeen || null,
+                        createdAt: userData.createdAt || null
+                    });
+                });
+                
+                // Sort by last seen (most recent first)
+                allUsers.sort((a, b) => {
+                    if (!a.lastSeen && !b.lastSeen) return 0;
+                    if (!a.lastSeen) return 1;
+                    if (!b.lastSeen) return -1;
+                    return b.lastSeen.toDate() - a.lastSeen.toDate();
+                });
+                
+                setMembers(allUsers);
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        };
+        
+        loadAllUsers();
+    }, []);
+
+    // Also extract members from current messages as backup
     React.useEffect(() => {
         if (!indicatorMessages) return;
         
@@ -257,7 +347,20 @@ function DiscordLayout() {
             }
         });
         
-        setMembers(Array.from(memberMap.values()));
+        // Merge with existing members, prioritizing stored users
+        setMembers(prev => {
+            const newMembers = Array.from(memberMap.values());
+            const existingMap = new Map(prev.map(member => [member.uid, member]));
+            
+            // Add new members that aren't already in the list
+            newMembers.forEach(member => {
+                if (!existingMap.has(member.uid)) {
+                    existingMap.set(member.uid, member);
+                }
+            });
+            
+            return Array.from(existingMap.values());
+        });
     }, [indicatorMessages]);
     
     return (
@@ -358,10 +461,7 @@ function DiscordLayout() {
                         >
                             <img 
                                 className="member-avatar"
-                                src={member.photoURL || (member.guestCode ? 
-                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.guestCode}&backgroundColor=5865f2&textColor=ffffff` :
-                                    'https://api.adorable.io/avatars/23/abott@adorable.png'
-                                )}
+                                src={getMemberAvatar(member)}
                                 alt={member.displayName}
                             />
                             <span className={`member-name ${member.isAnonymous ? 'guest' : ''}`}>
@@ -586,6 +686,13 @@ function ChatRoom({ channel, onUserClick }) {
         try {
             const docRef = await messagesRef.add(messageData);
             console.log('Message sent successfully with ID:', docRef.id);
+            
+            // Update user's last seen time
+            await saveUserToFirestore(auth.currentUser, {
+                displayName: displayNameWithCode,
+                photoURL: photoURL,
+                guestCode: guestCode
+            });
         } catch (error) {
             console.error('Error sending message:', error);
         }
@@ -903,15 +1010,18 @@ function ChatMessage({ message, onUserClick }) {
     };
 
     const getAvatar = () => {
-        if (photoURL) return photoURL;
+        // First check if message has a photoURL
+        if (photoURL && photoURL !== '') {
+            return photoURL;
+        }
         
-        // Generate guest avatar based on guest code
+        // For guest users, generate avatar based on guest code
         if (guestCode) {
             return `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestCode}&backgroundColor=5865f2&textColor=ffffff`;
         }
         
         // Default avatar
-        return 'https://api.adorable.io/avatars/23/abott@adorable.png';
+        return 'https://api.adorable.io/avatars/40/abott@adorable.png';
     };
 
     // Function to render text with mentions
@@ -1123,13 +1233,26 @@ function UserProfileButton({ onClick }) {
     };
     
     const getAvatar = () => {
-        if (userProfile?.profilePicture) return userProfile.profilePicture;
-        if (user?.photoURL) return user.photoURL;
+        // First check if user has a custom profile picture
+        if (userProfile?.profilePicture && userProfile.profilePicture !== '') {
+            return userProfile.profilePicture;
+        }
+        
+        // Check if user has a photoURL from auth
+        if (user?.photoURL && user.photoURL !== '') {
+            return user.photoURL;
+        }
+        
+        // For guest users, generate avatar based on guest code
         if (user?.isAnonymous) {
             const guestCode = localStorage.getItem('guestCode');
-            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+            if (guestCode) {
+                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+            }
         }
-        return 'https://api.adorable.io/avatars/23/abott@adorable.png';
+        
+        // Default avatar
+        return 'https://api.adorable.io/avatars/32/abott@adorable.png';
     };
     
     return (
@@ -1416,6 +1539,27 @@ function UserPreviewModal({ user, position, onClose }) {
     const [loading, setLoading] = useState(true);
     const modalRef = useRef(null);
     
+    // Function to get the correct avatar for a user
+    const getUserAvatar = (user, userProfile) => {
+        // First check if user has a custom profile picture
+        if (userProfile?.profilePicture && userProfile.profilePicture !== '') {
+            return userProfile.profilePicture;
+        }
+        
+        // Check if user has a photoURL from auth
+        if (user.photoURL && user.photoURL !== '') {
+            return user.photoURL;
+        }
+        
+        // For guest users, generate avatar based on guest code
+        if (user.isAnonymous && user.guestCode) {
+            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+        }
+        
+        // Default avatar
+        return 'https://api.adorable.io/avatars/100/abott@adorable.png';
+    };
+    
     // Close modal when clicking outside
     React.useEffect(() => {
         const handleClickOutside = (event) => {
@@ -1500,7 +1644,7 @@ function UserPreviewModal({ user, position, onClose }) {
                 <div 
                     className="user-preview-banner"
                     style={{
-                        backgroundImage: userProfile?.banner 
+                        backgroundImage: (userProfile?.banner && userProfile.banner !== '') 
                             ? `url(${userProfile.banner})` 
                             : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
                     }}
@@ -1510,7 +1654,7 @@ function UserPreviewModal({ user, position, onClose }) {
                 <div className="user-preview-picture-section">
                     <img 
                         className="user-preview-avatar"
-                        src={userProfile?.profilePicture || user.photoURL || 'https://api.adorable.io/avatars/100/abott@adorable.png'}
+                        src={getUserAvatar(user, userProfile)}
                         alt={user.displayName}
                     />
                 </div>
