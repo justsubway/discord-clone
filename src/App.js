@@ -1152,14 +1152,34 @@ function ChatRoom({ channel, onUserClick }) {
         console.log('Form value:', formValue);
         console.log('Current channel:', channel);
 
-        const { uid, photoURL, displayName, isAnonymous } = auth.currentUser;
-        console.log('User info:', { uid, photoURL, displayName, isAnonymous });
-
+        const { uid, photoURL, isAnonymous } = auth.currentUser;
+        
         // Get guest code if user is anonymous
         const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
+        
+        // Get current username from Firestore users collection
+        let currentDisplayName;
+        try {
+            const userDocId = isAnonymous ? `guest_${guestCode}` : uid;
+            const userDoc = await firestore.collection('users').doc(userDocId).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                currentDisplayName = userData.displayName || userData.username;
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+        }
+        
+        // Fallback to auth displayName if not found in database
+        if (!currentDisplayName) {
+            currentDisplayName = auth.currentUser.displayName || 'Anonymous';
+        }
+        
         const displayNameWithCode = isAnonymous 
             ? `Guest ${guestCode || 'XXXX'}` 
-            : (displayName || 'Anonymous');
+            : currentDisplayName;
+            
+        console.log('User info:', { uid, photoURL, displayName: currentDisplayName, isAnonymous });
 
         const userRole = getUserRole(auth.currentUser);
         const messageData = {
@@ -1184,7 +1204,7 @@ function ChatRoom({ channel, onUserClick }) {
             
             // Update user's last seen time
             await saveUserToFirestore(auth.currentUser, {
-                displayName: displayNameWithCode,
+                displayName: currentDisplayName,
                 photoURL: photoURL,
                 guestCode: guestCode
             });
