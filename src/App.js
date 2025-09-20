@@ -385,6 +385,28 @@ function DiscordLayout() {
             const allUsers = [];
             usersSnapshot.forEach(doc => {
                 const userData = doc.data();
+                
+                // Get role information from database or calculate it
+                let role, roleLevel, roleColor, roleIcon;
+                if (userData.role) {
+                    // Use role information from database
+                    role = userData.role;
+                    roleLevel = userData.roleLevel || 0;
+                    roleColor = userData.roleColor || '#8e9297';
+                    roleIcon = userData.roleIcon || '👤';
+                } else {
+                    // Calculate role information for users who don't have it stored yet
+                    const calculatedRole = getUserRole({
+                        uid: userData.uid || doc.id,
+                        isAnonymous: userData.isAnonymous || false,
+                        guestCode: userData.guestCode || null
+                    });
+                    role = calculatedRole.name;
+                    roleLevel = calculatedRole.level;
+                    roleColor = calculatedRole.color;
+                    roleIcon = calculatedRole.icon;
+                }
+                
                 allUsers.push({
                     uid: userData.uid || doc.id,
                     uniqueKey: doc.id,
@@ -394,10 +416,10 @@ function DiscordLayout() {
                     isAnonymous: userData.isAnonymous || false,
                     lastSeen: userData.lastSeen || null,
                     createdAt: userData.createdAt || null,
-                    role: userData.role || 'User',
-                    roleLevel: userData.roleLevel || 0,
-                    roleColor: userData.roleColor || '#8e9297',
-                    roleIcon: userData.roleIcon || '👤'
+                    role: role,
+                    roleLevel: roleLevel,
+                    roleColor: roleColor,
+                    roleIcon: roleIcon
                 });
             });
             
@@ -418,6 +440,28 @@ function DiscordLayout() {
             });
             
             setMembers(allUsers);
+            
+            // Update users who don't have role information in the database
+            const usersToUpdate = allUsers.filter(user => {
+                const userData = usersSnapshot.docs.find(doc => doc.id === user.uniqueKey)?.data();
+                return !userData?.role;
+            });
+            
+            if (usersToUpdate.length > 0) {
+                console.log('Updating role information for', usersToUpdate.length, 'users');
+                const batch = firestore.batch();
+                usersToUpdate.forEach(user => {
+                    const userRef = firestore.collection('users').doc(user.uniqueKey);
+                    batch.update(userRef, {
+                        role: user.role,
+                        roleLevel: user.roleLevel,
+                        roleColor: user.roleColor,
+                        roleIcon: user.roleIcon,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                });
+                await batch.commit();
+            }
         } catch (error) {
             console.error('Error loading users:', error);
         }
