@@ -1622,6 +1622,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     
     const dummy = useRef();
     const messagesContainerRef = useRef();
+    const lastMessageCountRef = useRef(0);
+    const renderTimeoutRef = useRef(null);
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
@@ -1656,13 +1658,13 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         if (!messagesSnapshot?.docs) return [];
         
         const mappedMessages = messagesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+            id: doc.id,
+            ...doc.data()
         }));
         
         // Sort by createdAt ascending (oldest first, newest last)
         // Use a stable sort to prevent visual jumps
-        return mappedMessages.sort((a, b) => {
+        const sortedMessages = mappedMessages.sort((a, b) => {
             const aTime = a.createdAt?.toDate?.() || new Date(0);
             const bTime = b.createdAt?.toDate?.() || new Date(0);
             const timeDiff = aTime.getTime() - bTime.getTime();
@@ -1674,10 +1676,27 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             
             return timeDiff;
         });
+        
+        // Log the sorted order for debugging
+        console.log('📝 SORTED MESSAGES:', sortedMessages.map(m => ({ 
+            id: m.id, 
+            text: m.text?.substring(0, 20), 
+            time: m.createdAt?.toDate?.()?.toISOString(),
+            timestamp: m.createdAt?.toDate?.()?.getTime()
+        })));
+        
+        return sortedMessages;
     }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
     console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
+    
+    // Check if message count has changed to prevent unnecessary re-renders
+    if (messages.length !== lastMessageCountRef.current) {
+        console.log('📊 MESSAGE COUNT CHANGED:', lastMessageCountRef.current, '->', messages.length);
+        lastMessageCountRef.current = messages.length;
+    }
+    
     if (messages.length > 0) {
         console.log('📝 Message order check:', messages.map(m => ({ 
             id: m.id, 
@@ -1999,17 +2018,24 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     // Debug: Log what we're about to render
     console.log('🎨 RENDERING - About to render', filteredMessages.length, 'messages');
 
+    // Memoize the message list to prevent unnecessary re-renders
+    const messageList = React.useMemo(() => {
+        if (filteredMessages.length === 0) {
+            return (
+                <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
+                    <p>No messages in #{channel} yet</p>
+                    <p>Be the first to send a message!</p>
+                </div>
+            );
+        }
+        
+        return filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />);
+    }, [filteredMessages, channel, onUserClick]);
+
     return (
         <>
             <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
-                {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
-                ) : (
-                    <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
-                        <p>No messages in #{channel} yet</p>
-                        <p>Be the first to send a message!</p>
-                    </div>
-                )}
+                {messageList}
             <span ref={dummy}></span>
             </div>
 
