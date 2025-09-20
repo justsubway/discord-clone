@@ -267,10 +267,17 @@ function DiscordLayout() {
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
       const [members, setMembers] = useState([]);
-      const [channels, setChannels] = useState(['general', 'random']); // Default channels
+      const [channels, setChannels] = useState([
+        { name: 'general', category: 'General' },
+        { name: 'random', category: 'General' }
+      ]); // Default channels with categories
       const [channelsLoaded, setChannelsLoaded] = useState(false);
       const [showCreateChannel, setShowCreateChannel] = useState(false);
       const [newChannelName, setNewChannelName] = useState('');
+      const [newChannelCategory, setNewChannelCategory] = useState('General');
+      const [showCreateCategory, setShowCreateCategory] = useState(false);
+      const [newCategoryName, setNewCategoryName] = useState('');
+      const [categories, setCategories] = useState(['General', 'Gaming', 'Music', 'Art']);
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
@@ -296,14 +303,26 @@ function DiscordLayout() {
             
             if (channelsDoc.exists) {
                 const channelsData = channelsDoc.data();
-                setChannels(channelsData.channels || ['general', 'random']);
+                setChannels(channelsData.channels || [
+                    { name: 'general', category: 'General' },
+                    { name: 'random', category: 'General' }
+                ]);
+                setCategories(channelsData.categories || ['General', 'Gaming', 'Music', 'Art']);
             } else {
                 // Create default channels document
+                const defaultChannels = [
+                    { name: 'general', category: 'General' },
+                    { name: 'random', category: 'General' }
+                ];
+                const defaultCategories = ['General', 'Gaming', 'Music', 'Art'];
                 await channelsRef.set({
-                    channels: ['general', 'random'],
+                    channels: defaultChannels,
+                    categories: defaultCategories,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                setChannels(defaultChannels);
+                setCategories(defaultCategories);
             }
             setChannelsLoaded(true);
         } catch (error) {
@@ -313,13 +332,17 @@ function DiscordLayout() {
     };
 
     // Save channels to Firestore
-    const saveChannels = async (newChannels) => {
+    const saveChannels = async (newChannels, newCategories = null) => {
         try {
             const channelsRef = firestore.collection('channels').doc('main');
-            await channelsRef.set({
+            const updateData = {
                 channels: newChannels,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            };
+            if (newCategories) {
+                updateData.categories = newCategories;
+            }
+            await channelsRef.set(updateData, { merge: true });
         } catch (error) {
             console.error('Error saving channels:', error);
         }
@@ -539,22 +562,31 @@ function DiscordLayout() {
     const createChannel = async () => {
         if (!newChannelName.trim()) return;
         
-        const channelName = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        // Allow emojis and more characters in channel names
+        const channelName = newChannelName.trim();
         if (!channelName) {
-            alert('Channel name can only contain letters, numbers, hyphens, and underscores');
+            alert('Channel name cannot be empty');
             return;
         }
         
-        if (channels.includes(channelName)) {
+        // Basic validation - no empty names or just spaces
+        if (channelName.length < 1 || channelName.length > 50) {
+            alert('Channel name must be between 1 and 50 characters');
+            return;
+        }
+        
+        if (channels.some(ch => ch.name === channelName)) {
             alert('Channel already exists');
             return;
         }
         
         try {
             // Add channel to local state
-            const newChannels = [...channels, channelName];
+            const newChannel = { name: channelName, category: newChannelCategory };
+            const newChannels = [...channels, newChannel];
             setChannels(newChannels);
             setNewChannelName('');
+            setNewChannelCategory('General');
             setShowCreateChannel(false);
             
             // Save to Firestore
@@ -589,7 +621,7 @@ function DiscordLayout() {
         
         try {
             // Remove channel from local state
-            const newChannels = channels.filter(ch => ch !== channelName);
+            const newChannels = channels.filter(ch => ch.name !== channelName);
             setChannels(newChannels);
             
             // Save to Firestore
@@ -627,6 +659,29 @@ function DiscordLayout() {
         } catch (error) {
             console.error('Error deleting channel:', error);
             alert('Error deleting channel');
+        }
+    };
+
+    // Create new category
+    const createCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        
+        const categoryName = newCategoryName.trim();
+        if (categories.includes(categoryName)) {
+            alert('Category already exists');
+            return;
+        }
+        
+        try {
+            const newCategories = [...categories, categoryName];
+            setCategories(newCategories);
+            setNewCategoryName('');
+            setShowCreateCategory(false);
+            
+            // Save to Firestore
+            await saveChannels(channels, newCategories);
+        } catch (error) {
+            console.error('Error creating category:', error);
         }
     };
 
@@ -690,88 +745,154 @@ function DiscordLayout() {
                 </div>
                 
                 <div className="channel-categories">
-                    <div className="category">
-                        <div className="category-header">
-                            <span>Text Channels</span>
-                        </div>
-                        <div className="channel-list">
-                            {channels.map(channel => (
-                                <div 
-                                    key={channel}
-                                    className={`channel ${selectedChannel === channel ? 'active' : ''} ${selectedChannel !== channel && unreadChannels.has(channel) ? 'unread' : ''} ${selectedChannel !== channel && mentionedChannels.has(channel) ? 'mentioned' : ''}`}
-                                    onClick={() => setSelectedChannel(channel)}
-                                >
-                                    <span className="channel-icon">#</span>
-                                    <span className="channel-name">{channel}</span>
-                                    {selectedChannel !== channel && mentionedChannels.has(channel) && (
-                                        <span className="mention-indicator">@</span>
-                                    )}
-                                    {selectedChannel !== channel && unreadChannels.has(channel) && !mentionedChannels.has(channel) && (
-                                        <span className="unread-indicator"></span>
-                                    )}
-                                    {/* Delete Channel Button - Only for Admins and not for default channels */}
-                                    {hasPermission(auth.currentUser, 'delete_channels') && !['general', 'random'].includes(channel) && (
-                                        <button 
-                                            className="delete-channel-btn"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                deleteChannel(channel);
-                                            }}
-                                            title="Delete Channel"
-                                        >
-                                            ×
-                                        </button>
-                                    )}
+                    {/* Render channels grouped by category */}
+                    {categories.map(category => {
+                        const categoryChannels = channels.filter(ch => ch.category === category);
+                        if (categoryChannels.length === 0) return null;
+                        
+                        return (
+                            <div key={category} className="category">
+                                <div className="category-header">
+                                    <span className="category-name">{category}</span>
+                                    <span className="category-count">{categoryChannels.length}</span>
                                 </div>
-                            ))}
-                            
-                            {/* Create Channel Button - Only for moderators/admins */}
-                            {hasPermission(auth.currentUser, 'create_channels') && (
-                                <div className="create-channel-section">
-                                    {!showCreateChannel ? (
-                                        <button 
-                                            className="create-channel-btn"
-                                            onClick={() => setShowCreateChannel(true)}
-                                            title="Create Channel"
+                                <div className="channel-list">
+                                    {categoryChannels.map(channel => (
+                                        <div 
+                                            key={channel.name}
+                                            className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
+                                            onClick={() => setSelectedChannel(channel.name)}
                                         >
-                                            <span className="channel-icon">+</span>
-                                            <span>Create Channel</span>
-                                        </button>
-                                    ) : (
-                                        <div className="create-channel-form">
-                                            <input
-                                                type="text"
-                                                value={newChannelName}
-                                                onChange={(e) => setNewChannelName(e.target.value)}
-                                                placeholder="Channel name"
-                                                className="channel-name-input"
-                                                onKeyPress={(e) => e.key === 'Enter' && createChannel()}
-                                                autoFocus
-                                            />
-                                            <div className="create-channel-actions">
+                                            <span className="channel-icon">#</span>
+                                            <span className="channel-name">{channel.name}</span>
+                                            {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
+                                                <span className="mention-indicator">@</span>
+                                            )}
+                                            {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
+                                                <span className="unread-indicator"></span>
+                                            )}
+                                            {/* Delete Channel Button - Only for Admins and not for default channels */}
+                                            {hasPermission(auth.currentUser, 'delete_channels') && !['general', 'random'].includes(channel.name) && (
                                                 <button 
-                                                    className="create-channel-confirm"
-                                                    onClick={createChannel}
-                                                >
-                                                    Create
-                                                </button>
-                                                <button 
-                                                    className="create-channel-cancel"
-                                                    onClick={() => {
-                                                        setShowCreateChannel(false);
-                                                        setNewChannelName('');
+                                                    className="delete-channel-btn"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        deleteChannel(channel.name);
                                                     }}
+                                                    title="Delete Channel"
                                                 >
-                                                    Cancel
+                                                    ×
                                                 </button>
-                                            </div>
+                                            )}
                                         </div>
-                                    )}
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    
+                    {/* Create Channel Button - Only for moderators/admins */}
+                    {hasPermission(auth.currentUser, 'create_channels') && (
+                        <div className="create-channel-section">
+                            {!showCreateChannel ? (
+                                <button 
+                                    className="create-channel-btn"
+                                    onClick={() => setShowCreateChannel(true)}
+                                    title="Create Channel"
+                                >
+                                    <span className="channel-icon">+</span>
+                                    <span>Create Channel</span>
+                                </button>
+                            ) : (
+                                <div className="create-channel-form">
+                                    <input
+                                        type="text"
+                                        value={newChannelName}
+                                        onChange={(e) => setNewChannelName(e.target.value)}
+                                        placeholder="Channel name (emojis allowed!)"
+                                        className="channel-name-input"
+                                        onKeyPress={(e) => e.key === 'Enter' && createChannel()}
+                                        autoFocus
+                                    />
+                                    <select
+                                        value={newChannelCategory}
+                                        onChange={(e) => setNewChannelCategory(e.target.value)}
+                                        className="channel-category-select"
+                                    >
+                                        {categories.map(category => (
+                                            <option key={category} value={category}>
+                                                {category}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="create-channel-actions">
+                                        <button 
+                                            className="create-channel-confirm"
+                                            onClick={createChannel}
+                                        >
+                                            Create
+                                        </button>
+                                        <button 
+                                            className="create-channel-cancel"
+                                            onClick={() => {
+                                                setShowCreateChannel(false);
+                                                setNewChannelName('');
+                                                setNewChannelCategory('General');
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
-                    </div>
+                    )}
                 </div>
+                
+                {/* Create Category Section - Only for moderators/admins */}
+                {hasPermission(auth.currentUser, 'create_channels') && (
+                    <div className="create-category-section">
+                        {!showCreateCategory ? (
+                            <button 
+                                className="create-category-btn"
+                                onClick={() => setShowCreateCategory(true)}
+                                title="Create Category"
+                            >
+                                <span className="category-icon">+</span>
+                                <span>Create Category</span>
+                            </button>
+                        ) : (
+                            <div className="create-category-form">
+                                <input
+                                    type="text"
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                    placeholder="Category name"
+                                    className="category-name-input"
+                                    onKeyPress={(e) => e.key === 'Enter' && createCategory()}
+                                    autoFocus
+                                />
+                                <div className="create-category-actions">
+                                    <button 
+                                        className="create-category-confirm"
+                                        onClick={createCategory}
+                                    >
+                                        Create
+                                    </button>
+                                    <button 
+                                        className="create-category-cancel"
+                                        onClick={() => {
+                                            setShowCreateCategory(false);
+                                            setNewCategoryName('');
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
                 
                 <div className="channel-sidebar-footer">
                     <UserProfileButton 
