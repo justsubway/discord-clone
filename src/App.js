@@ -5,6 +5,7 @@ import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 import 'firebase/compat/storage';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore';
@@ -21,6 +22,7 @@ firebase.initializeApp({
 const auth = firebase.auth();
 const firestore = firebase.firestore();
 const storage = firebase.storage();
+const storageV9 = getStorage();
 
 // Simple event system for profile updates
 const profileUpdateListeners = new Set();
@@ -386,6 +388,7 @@ function DiscordLayout() {
         if (!indicatorMessages || !auth.currentUser) return;
         
         const currentUser = auth.currentUser;
+        const currentUserId = currentUser.uid;
         const newUnreadChannels = new Set();
         const newMentionedChannels = new Set();
         
@@ -403,12 +406,12 @@ function DiscordLayout() {
             if (readChannels.has(channel)) return;
             
             // Check if message is unread (only if it's not from current user)
-            if (msg.uid !== currentUser.uid) {
+            if (msg.uid !== currentUserId) {
                 newUnreadChannels.add(channel);
             }
             
             // Check for mentions (only if message contains @ and is from someone else)
-            if (msg.text && msg.text.includes('@') && msg.uid !== currentUser.uid) {
+            if (msg.text && msg.text.includes('@') && msg.uid !== currentUserId) {
                 const isMentioned = isUserMentioned(msg.text, currentUser);
                 if (isMentioned) {
                     newMentionedChannels.add(channel);
@@ -425,7 +428,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages, readChannels, auth.currentUser]);
+    }, [indicatorMessages, readChannels]);
 
     // Load all users from Firestore users collection
     const loadAllUsers = async () => {
@@ -2032,16 +2035,16 @@ function ProfileModal({ onClose }) {
         try {
             const fileExtension = file.name.split('.').pop();
             const fileName = `${user.uid}_${type}_${Date.now()}.${fileExtension}`;
-            const storageRef = storage.ref().child(`profile-images/${fileName}`);
+            const storageRef = ref(storageV9, `profile-images/${fileName}`);
             
             console.log('Uploading to:', `profile-images/${fileName}`);
             
-            // Upload the file
-            await storageRef.put(file);
+            // Upload the file using modern Firebase v9+ API
+            await uploadBytes(storageRef, file);
             console.log('File uploaded successfully');
             
-            // Get the download URL
-            const downloadURL = await storageRef.getDownloadURL();
+            // Get the download URL using modern Firebase v9+ API
+            const downloadURL = await getDownloadURL(storageRef);
             console.log('Got download URL:', downloadURL);
             
             // Update the profile state
