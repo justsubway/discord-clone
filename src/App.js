@@ -1052,7 +1052,19 @@ function DiscordLayout() {
                         }}
                         title={server.name}
                     >
-                        {server.icon || server.name.charAt(0).toUpperCase()}
+                        {server.icon ? (
+                            server.icon.startsWith('data:image') ? (
+                                <img 
+                                    src={server.icon} 
+                                    alt={server.name}
+                                    className="server-icon-image"
+                                />
+                            ) : (
+                                server.icon
+                            )
+                        ) : (
+                            server.name.charAt(0).toUpperCase()
+                        )}
                     </div>
                 ))}
                 <div 
@@ -3097,6 +3109,9 @@ function CreateServerModal({ onClose, onCreateServer, serverName, setServerName,
 
 function ServerIconModal({ onClose, onIconChange, serverIcon, setServerIcon }) {
     const modalRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [iconType, setIconType] = useState('text'); // 'text' or 'image'
+    const [previewImage, setPreviewImage] = useState(null);
     
     // Close modal when clicking outside
     React.useEffect(() => {
@@ -3112,9 +3127,39 @@ function ServerIconModal({ onClose, onIconChange, serverIcon, setServerIcon }) {
         };
     }, [onClose]);
 
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Compress and convert to base64
+            compressImage(file, 100, 100, 0.8).then(compressedBase64 => {
+                setServerIcon(compressedBase64);
+                setPreviewImage(compressedBase64);
+            }).catch(error => {
+                console.error('Error compressing image:', error);
+                alert('Error processing image. Please try again.');
+            });
+        }
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (iconType === 'text' && !serverIcon.trim()) {
+            alert('Please enter an icon');
+            return;
+        }
+        if (iconType === 'image' && !serverIcon) {
+            alert('Please select an image');
+            return;
+        }
         onIconChange(serverIcon);
+    };
+
+    const clearImage = () => {
+        setServerIcon('');
+        setPreviewImage(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
     };
 
     return (
@@ -3127,18 +3172,74 @@ function ServerIconModal({ onClose, onIconChange, serverIcon, setServerIcon }) {
                 
                 <form onSubmit={handleSubmit} className="create-server-form">
                     <div className="form-group">
-                        <label htmlFor="serverIcon">Server Icon *</label>
-                        <input
-                            type="text"
-                            id="serverIcon"
-                            value={serverIcon}
-                            onChange={(e) => setServerIcon(e.target.value)}
-                            placeholder="Enter emoji or text (e.g., 🎮, A, 1)"
-                            maxLength={2}
-                            required
-                        />
-                        <small className="form-help">Enter a single emoji or 1-2 characters</small>
+                        <label>Icon Type</label>
+                        <div className="icon-type-selector">
+                            <button
+                                type="button"
+                                className={`icon-type-btn ${iconType === 'text' ? 'active' : ''}`}
+                                onClick={() => setIconType('text')}
+                            >
+                                Text/Emoji
+                            </button>
+                            <button
+                                type="button"
+                                className={`icon-type-btn ${iconType === 'image' ? 'active' : ''}`}
+                                onClick={() => setIconType('image')}
+                            >
+                                Image
+                            </button>
+                        </div>
                     </div>
+
+                    {iconType === 'text' ? (
+                        <div className="form-group">
+                            <label htmlFor="serverIcon">Server Icon *</label>
+                            <input
+                                type="text"
+                                id="serverIcon"
+                                value={serverIcon}
+                                onChange={(e) => setServerIcon(e.target.value)}
+                                placeholder="Enter emoji or text (e.g., 🎮, A, 1)"
+                                maxLength={2}
+                                required
+                            />
+                            <small className="form-help">Enter a single emoji or 1-2 characters</small>
+                        </div>
+                    ) : (
+                        <div className="form-group">
+                            <label htmlFor="serverIconFile">Server Icon Image *</label>
+                            <div className="image-upload-area">
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    id="serverIconFile"
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    style={{ display: 'none' }}
+                                />
+                                <button
+                                    type="button"
+                                    className="file-upload-btn"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    Choose Image
+                                </button>
+                                {previewImage && (
+                                    <div className="image-preview">
+                                        <img src={previewImage} alt="Preview" />
+                                        <button
+                                            type="button"
+                                            className="clear-image-btn"
+                                            onClick={clearImage}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            <small className="form-help">Upload an image (max 100x100px, will be resized)</small>
+                        </div>
+                    )}
                     
                     <div className="modal-actions">
                         <button type="button" className="cancel-btn" onClick={onClose}>
