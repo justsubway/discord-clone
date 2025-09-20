@@ -170,6 +170,7 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
         }
         
         const userRef = firestore.collection('users').doc(documentId);
+        const profileRef = firestore.collection('userProfiles').doc(documentId);
         const userRole = getUserRole(user);
         const userData = {
             uid: user.uid,
@@ -187,7 +188,9 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
             ...additionalData
         };
         
+        // Save to both collections for compatibility
         await userRef.set(userData, { merge: true });
+        await profileRef.set(userData, { merge: true });
         console.log('User saved to Firestore:', documentId);
     } catch (error) {
         console.error('Error saving user to Firestore:', error);
@@ -1622,7 +1625,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
-        const messagesRef = firestore.collection('messages');
+    const messagesRef = firestore.collection('messages');
         console.log('🔍 CREATING QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
         
         if (selectedServer?.id) {
@@ -1654,8 +1657,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         
         return messagesSnapshot.docs
             .map(doc => ({
-                id: doc.id,
-                ...doc.data()
+        id: doc.id,
+        ...doc.data()
             }))
             .sort((a, b) => {
                 // Sort by createdAt descending (newest first)
@@ -1954,13 +1957,13 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         if (!messages) return [];
         
         const filtered = messages
-            .filter(msg => {
-                // If message has channel property, filter by it
-                if (msg.channel) {
-                    return msg.channel === channel;
-                }
-                // If message doesn't have channel property (old messages), show in general
-                return channel === 'general';
+        .filter(msg => {
+            // If message has channel property, filter by it
+            if (msg.channel) {
+                return msg.channel === channel;
+            }
+            // If message doesn't have channel property (old messages), show in general
+            return channel === 'general';
             });
             // Don't reverse here - messages are already sorted newest first from the useMemo
         
@@ -2498,8 +2501,15 @@ function UserProfileButton({ onClick }) {
                 }
             }
             
-            const profileRef = firestore.collection('users').doc(documentId);
-            const profileDoc = await profileRef.get();
+            // Try userProfiles first, then fallback to users
+            let profileRef = firestore.collection('userProfiles').doc(documentId);
+            let profileDoc = await profileRef.get();
+            
+            if (!profileDoc.exists) {
+                // Fallback to users collection
+                profileRef = firestore.collection('users').doc(documentId);
+                profileDoc = await profileRef.get();
+            }
             
             if (profileDoc.exists) {
                 setUserProfile(profileDoc.data());
@@ -2532,7 +2542,6 @@ function UserProfileButton({ onClick }) {
     
     const getDisplayName = () => {
         if (userProfile?.username) return userProfile.username;
-        if (userProfile?.displayName) return userProfile.displayName;
         if (user?.isAnonymous) {
             const guestCode = localStorage.getItem('guestCode');
             return `Guest ${guestCode || 'XXXX'}`;
@@ -2746,18 +2755,20 @@ function ProfileModal({ onClose }) {
                 }
             }
             
-            // Update user profile
-            const profileRef = firestore.collection('users').doc(documentId);
-            await profileRef.set({
+            // Update user profile in both collections
+            const profileRef = firestore.collection('userProfiles').doc(documentId);
+            const userRef = firestore.collection('users').doc(documentId);
+            const profileData = {
                 username: userProfile.username,
                 aboutMe: userProfile.aboutMe,
                 profilePicture: userProfile.profilePicture,
                 banner: userProfile.banner,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            };
             
-            // Also update the main users collection for members list
-            const usersRef = firestore.collection('users').doc(documentId);
+            // Save to both collections
+            await profileRef.set(profileData, { merge: true });
+            await userRef.set(profileData, { merge: true });
             
             // For guest users, ensure we preserve the guestCode and handle photoURL properly
             const currentUserRole = getUserRole(user);
