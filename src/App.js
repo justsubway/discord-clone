@@ -1667,14 +1667,24 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         const sorted = mappedMessages.sort((a, b) => {
             const aTime = a.createdAt?.toDate?.() || new Date(0);
             const bTime = b.createdAt?.toDate?.() || new Date(0);
-            return aTime.getTime() - bTime.getTime();
+            const timeDiff = aTime.getTime() - bTime.getTime();
+            
+            // Debug: Log individual timestamps
+            console.log('🕐 SORTING:', {
+                a: { id: a.id, time: aTime.toISOString(), timestamp: aTime.getTime() },
+                b: { id: b.id, time: bTime.toISOString(), timestamp: bTime.getTime() },
+                diff: timeDiff
+            });
+            
+            return timeDiff;
         });
         
-        // Debug: Log the sorted order
+        // Debug: Log the sorted order with timestamps
         console.log('📝 SORTED MESSAGES:', sorted.map(m => ({ 
             id: m.id, 
             text: m.text?.substring(0, 20), 
-            time: m.createdAt?.toDate?.()?.toISOString()
+            time: m.createdAt?.toDate?.()?.toISOString(),
+            timestamp: m.createdAt?.toDate?.()?.getTime()
         })));
         
         return sorted;
