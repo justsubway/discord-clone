@@ -403,12 +403,12 @@ function DiscordLayout() {
             }
         });
         
-        console.log('🔔 Channel indicators update:', {
-            unreadChannels: Array.from(newUnreadChannels),
-            mentionedChannels: Array.from(newMentionedChannels),
-            readChannels: Array.from(readChannels),
-            selectedChannel
-        });
+        // console.log('🔔 Channel indicators update:', {
+        //     unreadChannels: Array.from(newUnreadChannels),
+        //     mentionedChannels: Array.from(newMentionedChannels),
+        //     readChannels: Array.from(readChannels),
+        //     selectedChannel
+        // });
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
@@ -489,7 +489,7 @@ function DiscordLayout() {
                 return b.lastSeen.toDate() - a.lastSeen.toDate();
             });
             
-            console.log('Loaded users:', allUsers.length, allUsers.map(u => ({ name: u.displayName, role: u.role, roleLevel: u.roleLevel })));
+            console.log('Loaded users:', allUsers.length, 'users');
             console.log('Users by role:', {
                 admins: allUsers.filter(u => u.role === 'Admin').length,
                 moderators: allUsers.filter(u => u.role === 'Moderator').length,
@@ -804,9 +804,6 @@ function DiscordLayout() {
                     <span>Online — {members.length}</span>
                 </div>
                 <div className="members-list">
-                    {/* Debug info */}
-                    {console.log('Members for rendering:', members.length, members.map(m => ({ name: m.displayName, role: m.role })))}
-                    
                     {/* Admins Section */}
                     {members.filter(member => member.role === 'Admin').length > 0 && (
                         <div className="role-section">
@@ -892,14 +889,19 @@ function DiscordLayout() {
                     )}
 
                     {/* Members Section */}
-                    {members.filter(member => member.role === 'User').length > 0 && (
+                    {members.filter(member => member.role === 'User' || !member.role || member.role === 'undefined').length > 0 && (
                         <div className="role-section">
                             <div className="role-section-header">
-                                <span>Members — {members.filter(member => member.role === 'User').length}</span>
+                                <span>Members — {members.filter(member => member.role === 'User' || !member.role || member.role === 'undefined').length}</span>
                             </div>
                             <div className="role-section-list">
-                                {members.filter(member => member.role === 'User').map(member => {
-                                    const role = { name: member.role, color: member.roleColor, icon: member.roleIcon };
+                                {members.filter(member => member.role === 'User' || !member.role || member.role === 'undefined').map(member => {
+                                    // Ensure we have valid role data
+                                    const role = { 
+                                        name: member.role || 'User', 
+                                        color: member.roleColor || '#8e9297', 
+                                        icon: member.roleIcon || '👤' 
+                                    };
                                     return (
                                         <div 
                                             key={member.uniqueKey || member.uid}
@@ -1084,7 +1086,7 @@ function ChatRoom({ channel, onUserClick }) {
     }, [messages, lastMessageId]);
 
     // Debug logging for messages (reduced)
-    console.log('=== CHATROOM DEBUG ===', channel, messages?.length || 0, 'messages');
+    // console.log('=== CHATROOM DEBUG ===', channel, messages?.length || 0, 'messages');
 
     // Handle input change for mention detection
     const handleInputChange = (e) => {
@@ -1208,7 +1210,7 @@ function ChatRoom({ channel, onUserClick }) {
         .reverse() // Reverse to show oldest to newest (chronological order)
         : [];
 
-    console.log('Filtered messages count:', filteredMessages.length);
+    // console.log('Filtered messages count:', filteredMessages.length);
 
     return (
         <>
