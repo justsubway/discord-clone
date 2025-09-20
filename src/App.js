@@ -351,11 +351,26 @@ function DiscordLayout() {
     
     // Mark channel as read when switching to it
     React.useEffect(() => {
-        setReadChannels(prev => {
-            const newSet = new Set(prev);
-            newSet.add(selectedChannel);
-            return newSet;
-        });
+        if (selectedChannel) {
+            setReadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.add(selectedChannel);
+                return newSet;
+            });
+            
+            // Immediately clear unread and mention indicators for this channel
+            setUnreadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(selectedChannel);
+                return newSet;
+            });
+            
+            setMentionedChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(selectedChannel);
+                return newSet;
+            });
+        }
     }, [selectedChannel]);
 
     // Reset read status when new messages arrive (so indicators can appear again)
@@ -1132,10 +1147,16 @@ function ChatRoom({ channel, onUserClick }) {
         const userMap = new Map();
         messages.forEach(msg => {
             if (msg.displayName && msg.uid) {
-                userMap.set(msg.uid, {
+                // Create unique key for guest users using guest code
+                const uniqueKey = msg.guestCode ? `guest_${msg.guestCode}` : msg.uid;
+                
+                userMap.set(uniqueKey, {
                     displayName: msg.displayName,
                     uid: msg.uid,
-                    photoURL: msg.photoURL
+                    uniqueKey: uniqueKey,
+                    photoURL: msg.photoURL,
+                    guestCode: msg.guestCode,
+                    isAnonymous: msg.guestCode ? true : false
                 });
             }
         });
@@ -1143,6 +1164,22 @@ function ChatRoom({ channel, onUserClick }) {
     };
 
     const uniqueUsers = getUniqueUsers();
+
+    // Function to get the correct avatar for mention dropdown users
+    const getMentionAvatar = (user) => {
+        // First check if user has a photoURL
+        if (user.photoURL && user.photoURL !== '') {
+            return user.photoURL;
+        }
+        
+        // For guest users, generate avatar based on guest code
+        if (user.isAnonymous && user.guestCode) {
+            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+        }
+        
+        // Default avatar
+        return 'https://api.adorable.io/avatars/23/abott@adorable.png';
+    };
 
     // Filter users based on mention query
     const filteredUsers = uniqueUsers.filter(user => 
@@ -1421,7 +1458,7 @@ function ChatRoom({ channel, onUserClick }) {
                                     >
                                         <img 
                                             className="mention-avatar" 
-                                            src={user.photoURL || 'https://api.adorable.io/avatars/23/abott@adorable.png'} 
+                                            src={getMentionAvatar(user)} 
                                             alt={user.displayName}
                                         />
                                         <span className="mention-name">{user.displayName}</span>
