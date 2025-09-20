@@ -762,9 +762,9 @@ function DiscordLayout() {
     
     const indicatorMessages = React.useMemo(() => {
         return indicatorSnapshot?.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) || [];
+        id: doc.id,
+        ...doc.data()
+    })) || [];
     }, [indicatorSnapshot]);
     
     // Mark channel as read when switching to it
@@ -1415,6 +1415,7 @@ function DiscordLayout() {
                 </div>
                 
                         <ChatRoom 
+                            key={`${selectedServer?.id}-${selectedChannel}`}
                             channel={selectedChannel}
                             selectedServer={selectedServer}
                             onUserClick={(user, event) => {
@@ -1618,19 +1619,20 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     
     const dummy = useRef();
     const messagesContainerRef = useRef();
-    const messagesRef = React.useMemo(() => firestore.collection('messages'), []);
     
-    // Use proper query to get the most recent messages for the selected server
-    // Order by createdAt descending to get newest first, then limit to 30 for better performance
-    // Note: Reduced limit for better performance
+    // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
-        return selectedServer 
-            ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30)
-            : messagesRef.orderBy('createdAt', 'desc').limit(30);
-    }, [messagesRef, selectedServer?.id]);
+    const messagesRef = firestore.collection('messages');
+        console.log('🔍 CREATING QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
+        
+        if (selectedServer?.id) {
+            return messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30);
+        } else {
+            return messagesRef.orderBy('createdAt', 'desc').limit(30);
+        }
+    }, [selectedServer?.id]); // Only depend on server ID, not the entire server object
 
     console.log('🔍 FIRESTORE QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
-    console.log('🔍 FIRESTORE QUERY - Query:', query);
 
     const [messagesSnapshot, loading, error] = useCollection(query);
     
@@ -1652,12 +1654,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     })) || [];
     
     // Debug: Log messages with comprehensive debugging
-    console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name);
-    console.log('📊 Raw messages from Firestore:', messages.length, 'messages');
-    if (messages.length > 0) {
-        console.log('📝 Sample message:', messages[0]);
-        console.log('📝 All message IDs:', messages.map(m => m.id));
-    } else {
+    console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
+    if (messages.length === 0) {
         console.log('❌ NO MESSAGES FOUND - This is the problem!');
     }
     
@@ -1719,8 +1717,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const filteredUsers = React.useMemo(() => {
         if (!mentionQuery.trim()) return uniqueUsers;
         return uniqueUsers.filter(user => 
-            user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
-        );
+        user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+    );
     }, [uniqueUsers, mentionQuery]);
 
     // Track last message ID to detect new messages
@@ -1943,26 +1941,14 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         if (!messages) return [];
         
         const filtered = messages
-            .filter(msg => {
-                console.log('🔍 FILTERING MESSAGE:', {
-                    id: msg.id,
-                    msgChannel: msg.channel,
-                    currentChannel: channel,
-                    serverId: msg.serverId,
-                    selectedServerId: selectedServer?.id
-                });
-                
-                // If message has channel property, filter by it
-                if (msg.channel) {
-                    const matches = msg.channel === channel;
-                    console.log('🔍 CHANNEL MATCH:', matches, 'msg.channel:', msg.channel, 'channel:', channel);
-                    return matches;
-                }
-                // If message doesn't have channel property (old messages), show in general
-                const isGeneral = channel === 'general';
-                console.log('🔍 GENERAL CHANNEL CHECK:', isGeneral, 'channel:', channel);
-                return isGeneral;
-            })
+        .filter(msg => {
+            // If message has channel property, filter by it
+            if (msg.channel) {
+                return msg.channel === channel;
+            }
+            // If message doesn't have channel property (old messages), show in general
+            return channel === 'general';
+        })
             .reverse(); // Reverse to show oldest to newest (chronological order)
         
         console.log('🔍 FILTERED MESSAGES - Channel:', channel, 'Count:', filtered.length);
@@ -1978,16 +1964,12 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
 
     // Debug: Log what we're about to render
     console.log('🎨 RENDERING - About to render', filteredMessages.length, 'messages');
-    console.log('🎨 RENDERING - Messages to render:', filteredMessages.map(m => ({ id: m.id, text: m.text?.substring(0, 50) })));
 
     return (
         <>
             <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
                 {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => {
-                        console.log('🎨 RENDERING MESSAGE:', msg.id, msg.text?.substring(0, 30));
-                        return <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />;
-                    })
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
                 ) : (
                     <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
                         <p>No messages in #{channel} yet</p>
@@ -2133,7 +2115,6 @@ const isUserMentioned = async (messageText, currentUser) => {
 };
 
 const ChatMessage = React.memo(({ message, onUserClick }) => {
-    console.log('🎨 ChatMessage RENDERED:', message.id, message.text?.substring(0, 30));
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions, role, roleColor, roleIcon } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
