@@ -1954,15 +1954,15 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         if (!messages) return [];
         
         const filtered = messages
-        .filter(msg => {
-            // If message has channel property, filter by it
-            if (msg.channel) {
-                return msg.channel === channel;
-            }
-            // If message doesn't have channel property (old messages), show in general
-            return channel === 'general';
-        })
-            .reverse(); // Reverse to show oldest to newest (chronological order)
+            .filter(msg => {
+                // If message has channel property, filter by it
+                if (msg.channel) {
+                    return msg.channel === channel;
+                }
+                // If message doesn't have channel property (old messages), show in general
+                return channel === 'general';
+            });
+            // Don't reverse here - messages are already sorted newest first from the useMemo
         
         console.log('🔍 FILTERED MESSAGES - Channel:', channel, 'Count:', filtered.length);
         if (filtered.length > 0) {
@@ -2498,7 +2498,7 @@ function UserProfileButton({ onClick }) {
                 }
             }
             
-            const profileRef = firestore.collection('userProfiles').doc(documentId);
+            const profileRef = firestore.collection('users').doc(documentId);
             const profileDoc = await profileRef.get();
             
             if (profileDoc.exists) {
@@ -2532,6 +2532,7 @@ function UserProfileButton({ onClick }) {
     
     const getDisplayName = () => {
         if (userProfile?.username) return userProfile.username;
+        if (userProfile?.displayName) return userProfile.displayName;
         if (user?.isAnonymous) {
             const guestCode = localStorage.getItem('guestCode');
             return `Guest ${guestCode || 'XXXX'}`;
@@ -2746,7 +2747,7 @@ function ProfileModal({ onClose }) {
             }
             
             // Update user profile
-            const profileRef = firestore.collection('userProfiles').doc(documentId);
+            const profileRef = firestore.collection('users').doc(documentId);
             await profileRef.set({
                 username: userProfile.username,
                 aboutMe: userProfile.aboutMe,
