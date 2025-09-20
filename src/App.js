@@ -40,6 +40,7 @@ const ROLE_SYSTEM = {
     ADMINS: [
         // Add admin UIDs here - these will have full permissions
         // Example: 'firebase-uid-1', 'firebase-uid-2'
+        'RIcaIxIG0xZBiAbmchmU3s4ryku2',
     ],
     
     // Moderator UIDs - Add your Firebase UIDs here for moderator access
@@ -460,6 +461,61 @@ function DiscordLayout() {
         }
     };
 
+    // Delete channel
+    const deleteChannel = async (channelName) => {
+        if (!hasPermission(auth.currentUser, 'delete_channels')) {
+            alert('You do not have permission to delete channels');
+            return;
+        }
+        
+        if (['general', 'random'].includes(channelName)) {
+            alert('Cannot delete default channels');
+            return;
+        }
+        
+        if (!window.confirm(`Are you sure you want to delete #${channelName}? This action cannot be undone.`)) {
+            return;
+        }
+        
+        try {
+            // Remove channel from local state
+            setChannels(prev => prev.filter(ch => ch !== channelName));
+            
+            // If the deleted channel was selected, switch to general
+            if (selectedChannel === channelName) {
+                setSelectedChannel('general');
+            }
+            
+            // Remove from read channels
+            setReadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // Remove from unread channels
+            setUnreadChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // Remove from mentioned channels
+            setMentionedChannels(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(channelName);
+                return newSet;
+            });
+            
+            // TODO: In a real app, you would also delete all messages from this channel from Firestore
+            // For now, we'll just remove it from the UI
+            
+        } catch (error) {
+            console.error('Error deleting channel:', error);
+            alert('Error deleting channel');
+        }
+    };
+
     // Also extract members from current messages as backup
     React.useEffect(() => {
         if (!indicatorMessages) return;
@@ -532,12 +588,25 @@ function DiscordLayout() {
                                     onClick={() => setSelectedChannel(channel)}
                                 >
                                     <span className="channel-icon">#</span>
-                                    <span>{channel}</span>
+                                    <span className="channel-name">{channel}</span>
                                     {selectedChannel !== channel && mentionedChannels.has(channel) && (
                                         <span className="mention-indicator">@</span>
                                     )}
                                     {selectedChannel !== channel && unreadChannels.has(channel) && !mentionedChannels.has(channel) && (
                                         <span className="unread-indicator"></span>
+                                    )}
+                                    {/* Delete Channel Button - Only for Admins and not for default channels */}
+                                    {hasPermission(auth.currentUser, 'delete_channels') && !['general', 'random'].includes(channel) && (
+                                        <button 
+                                            className="delete-channel-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteChannel(channel);
+                                            }}
+                                            title="Delete Channel"
+                                        >
+                                            ×
+                                        </button>
                                     )}
                                 </div>
                             ))}
@@ -618,42 +687,131 @@ function DiscordLayout() {
             {/* Members Sidebar */}
             <div className="members-sidebar">
                 <div className="members-header">
-                    <span>Members — {members.length}</span>
+                    <span>Online — {members.length}</span>
                 </div>
                 <div className="members-list">
-                    {members.map(member => {
-                        const role = getUserRole(member);
-                        return (
-                            <div 
-                                key={member.uniqueKey || member.uid}
-                                className={`member-item ${role.name.toLowerCase()}`}
-                                onClick={(e) => {
-                                    const rect = e.target.getBoundingClientRect();
-                                    setPreviewPosition({ x: rect.left - 300, y: rect.top });
-                                    setShowUserPreview(member);
-                                }}
-                            >
-                                <img 
-                                    className="member-avatar"
-                                    src={getMemberAvatar(member)}
-                                    alt={member.displayName}
-                                />
-                                <div className="member-info">
-                                    <span 
-                                        className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
-                                        style={{ color: role.color }}
-                                    >
-                                        {member.displayName}
-                                    </span>
-                                    {role.level > 0 && (
-                                        <span className="member-role" style={{ color: role.color }}>
-                                            {role.icon} {role.name}
-                                        </span>
-                                    )}
-                                </div>
+                    {/* Admins Section */}
+                    {members.filter(member => getUserRole(member).name === 'Admin').length > 0 && (
+                        <div className="role-section">
+                            <div className="role-section-header">
+                                <span>Administrators — {members.filter(member => getUserRole(member).name === 'Admin').length}</span>
                             </div>
-                        );
-                    })}
+                            <div className="role-section-list">
+                                {members.filter(member => getUserRole(member).name === 'Admin').map(member => {
+                                    const role = getUserRole(member);
+                                    return (
+                                        <div 
+                                            key={member.uniqueKey || member.uid}
+                                            className={`member-item ${role.name.toLowerCase()}`}
+                                            onClick={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                                setShowUserPreview(member);
+                                            }}
+                                        >
+                                            <img 
+                                                className="member-avatar"
+                                                src={getMemberAvatar(member)}
+                                                alt={member.displayName}
+                                            />
+                                            <div className="member-info">
+                                                <span 
+                                                    className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
+                                                    style={{ color: role.color }}
+                                                >
+                                                    {member.displayName}
+                                                </span>
+                                                <span className="member-role" style={{ color: role.color }}>
+                                                    {role.icon} {role.name}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Moderators Section */}
+                    {members.filter(member => getUserRole(member).name === 'Moderator').length > 0 && (
+                        <div className="role-section">
+                            <div className="role-section-header">
+                                <span>Moderators — {members.filter(member => getUserRole(member).name === 'Moderator').length}</span>
+                            </div>
+                            <div className="role-section-list">
+                                {members.filter(member => getUserRole(member).name === 'Moderator').map(member => {
+                                    const role = getUserRole(member);
+                                    return (
+                                        <div 
+                                            key={member.uniqueKey || member.uid}
+                                            className={`member-item ${role.name.toLowerCase()}`}
+                                            onClick={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                                setShowUserPreview(member);
+                                            }}
+                                        >
+                                            <img 
+                                                className="member-avatar"
+                                                src={getMemberAvatar(member)}
+                                                alt={member.displayName}
+                                            />
+                                            <div className="member-info">
+                                                <span 
+                                                    className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
+                                                    style={{ color: role.color }}
+                                                >
+                                                    {member.displayName}
+                                                </span>
+                                                <span className="member-role" style={{ color: role.color }}>
+                                                    {role.icon} {role.name}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Members Section */}
+                    {members.filter(member => getUserRole(member).name === 'User').length > 0 && (
+                        <div className="role-section">
+                            <div className="role-section-header">
+                                <span>Members — {members.filter(member => getUserRole(member).name === 'User').length}</span>
+                            </div>
+                            <div className="role-section-list">
+                                {members.filter(member => getUserRole(member).name === 'User').map(member => {
+                                    const role = getUserRole(member);
+                                    return (
+                                        <div 
+                                            key={member.uniqueKey || member.uid}
+                                            className={`member-item ${role.name.toLowerCase()}`}
+                                            onClick={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                                setShowUserPreview(member);
+                                            }}
+                                        >
+                                            <img 
+                                                className="member-avatar"
+                                                src={getMemberAvatar(member)}
+                                                alt={member.displayName}
+                                            />
+                                            <div className="member-info">
+                                                <span 
+                                                    className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
+                                                    style={{ color: role.color }}
+                                                >
+                                                    {member.displayName}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             
