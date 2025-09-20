@@ -2007,46 +2007,55 @@ function ProfileModal({ onClose }) {
     
     // Handle image upload
     const handleImageUpload = async (file, type) => {
-        if (!file || !user) return;
+        if (!file || !user) {
+            console.log('No file or user:', { file: !!file, user: !!user });
+            return;
+        }
         
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+            return;
+        }
+        
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            alert('Image file is too large. Please select a file smaller than 5MB.');
+            return;
+        }
+        
+        console.log('Starting upload:', { fileName: file.name, fileSize: file.size, fileType: file.type });
         setUploadingImage(true);
+        
         try {
             const fileExtension = file.name.split('.').pop();
             const fileName = `${user.uid}_${type}_${Date.now()}.${fileExtension}`;
             const storageRef = storage.ref().child(`profile-images/${fileName}`);
             
-            // Add upload progress tracking
-            const uploadTask = storageRef.put(file);
+            console.log('Uploading to:', `profile-images/${fileName}`);
             
-            uploadTask.on('state_changed', 
-                (snapshot) => {
-                    // Progress tracking (optional)
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    console.log(`Upload is ${progress}% done`);
-                },
-                (error) => {
-                    console.error('Upload error:', error);
-                    alert('Error uploading image. Please try again.');
-                    setUploadingImage(false);
-                },
-                async () => {
-                    try {
-                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                        setUserProfile(prev => ({
-                            ...prev,
-                            [type]: downloadURL
-                        }));
-                        setUploadingImage(false);
-                    } catch (error) {
-                        console.error('Error getting download URL:', error);
-                        alert('Error getting image URL. Please try again.');
-                        setUploadingImage(false);
-                    }
-                }
-            );
+            // Upload the file
+            await storageRef.put(file);
+            console.log('File uploaded successfully');
+            
+            // Get the download URL
+            const downloadURL = await storageRef.getDownloadURL();
+            console.log('Got download URL:', downloadURL);
+            
+            // Update the profile state
+            setUserProfile(prev => ({
+                ...prev,
+                [type]: downloadURL
+            }));
+            
+            setUploadingImage(false);
+            console.log('Image upload completed successfully');
+            
         } catch (error) {
             console.error('Error uploading image:', error);
-            alert('Error uploading image. Please try again.');
+            alert(`Error uploading image: ${error.message || 'Please try again.'}`);
             setUploadingImage(false);
         }
     };
