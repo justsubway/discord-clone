@@ -1614,21 +1614,33 @@ function DiscordLayout() {
 }
 
 function ChatRoom({ channel, selectedServer, onUserClick }) {
+    console.log('🔄 ChatRoom RENDERED - Channel:', channel, 'Server:', selectedServer?.name);
+    
     const dummy = useRef();
     const messagesContainerRef = useRef();
-    const messagesRef = firestore.collection('messages');
+    const messagesRef = React.useMemo(() => firestore.collection('messages'), []);
     
     // Use proper query to get the most recent messages for the selected server
     // Order by createdAt descending to get newest first, then limit to 30 for better performance
     // Note: Reduced limit for better performance
-    const query = selectedServer 
-        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30)
-        : messagesRef.orderBy('createdAt', 'desc').limit(30);
+    const query = React.useMemo(() => {
+        return selectedServer 
+            ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30)
+            : messagesRef.orderBy('createdAt', 'desc').limit(30);
+    }, [messagesRef, selectedServer?.id]);
 
     console.log('🔍 FIRESTORE QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
     console.log('🔍 FIRESTORE QUERY - Query:', query);
 
     const [messagesSnapshot, loading, error] = useCollection(query);
+    
+    // Track component lifecycle
+    React.useEffect(() => {
+        console.log('🔄 ChatRoom MOUNTED - Channel:', channel, 'Server:', selectedServer?.name);
+        return () => {
+            console.log('🔄 ChatRoom UNMOUNTED - Channel:', channel, 'Server:', selectedServer?.name);
+        };
+    }, [channel, selectedServer?.name]);
     
     console.log('🔍 FIRESTORE RESULT - Loading:', loading, 'Error:', error);
     console.log('🔍 FIRESTORE RESULT - Snapshot docs:', messagesSnapshot?.docs?.length || 0);
