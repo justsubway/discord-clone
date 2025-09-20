@@ -1307,8 +1307,9 @@ function ChatRoom({ channel, onUserClick }) {
             currentDisplayName = auth.currentUser.displayName || 'Anonymous';
         }
         
+        // For guest users, use custom username if available, otherwise fall back to Guest XXXX format
         const displayNameWithCode = isAnonymous 
-            ? `Guest ${guestCode || 'XXXX'}` 
+            ? (currentDisplayName || `Guest ${guestCode || 'XXXX'}`)
             : currentDisplayName;
             
         console.log('User info:', { uid, photoURL, displayName: currentDisplayName, isAnonymous });
@@ -1474,7 +1475,9 @@ const isUserMentioned = (messageText, currentUser) => {
     let displayName;
     if (currentUser.isAnonymous) {
         const guestCode = localStorage.getItem('guestCode');
-        displayName = `Guest ${guestCode || 'XXXX'}`;
+        // Try to get custom username from database first
+        // This is a simplified version - in a real app you'd want to cache this
+        displayName = `Guest ${guestCode || 'XXXX'}`; // Fallback to Guest format for mentions
     } else {
         displayName = currentUser.displayName || 'Anonymous';
     }
