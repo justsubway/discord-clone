@@ -1622,11 +1622,12 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
-    const messagesRef = firestore.collection('messages');
+        const messagesRef = firestore.collection('messages');
         console.log('🔍 CREATING QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
         
         if (selectedServer?.id) {
-            return messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30);
+            // Query by serverId only, then sort in JavaScript to avoid index requirement
+            return messagesRef.where('serverId', '==', selectedServer.id).limit(50);
         } else {
             return messagesRef.orderBy('createdAt', 'desc').limit(30);
         }
@@ -1647,11 +1648,22 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     console.log('🔍 FIRESTORE RESULT - Loading:', loading, 'Error:', error);
     console.log('🔍 FIRESTORE RESULT - Snapshot docs:', messagesSnapshot?.docs?.length || 0);
     
-    // Convert snapshot to data with IDs
-    const messages = messagesSnapshot?.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    })) || [];
+    // Convert snapshot to data with IDs and sort by createdAt
+    const messages = React.useMemo(() => {
+        if (!messagesSnapshot?.docs) return [];
+        
+        return messagesSnapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }))
+            .sort((a, b) => {
+                // Sort by createdAt descending (newest first)
+                const aTime = a.createdAt?.toDate?.() || new Date(0);
+                const bTime = b.createdAt?.toDate?.() || new Date(0);
+                return bTime.getTime() - aTime.getTime();
+            });
+    }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
     console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
