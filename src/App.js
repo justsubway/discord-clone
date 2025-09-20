@@ -22,6 +22,18 @@ const auth = firebase.auth();
 const firestore = firebase.firestore();
 const storage = firebase.storage();
 
+// Simple event system for profile updates
+const profileUpdateListeners = new Set();
+
+const addProfileUpdateListener = (callback) => {
+    profileUpdateListeners.add(callback);
+    return () => profileUpdateListeners.delete(callback);
+};
+
+const triggerProfileUpdate = () => {
+    profileUpdateListeners.forEach(callback => callback());
+};
+
 // Function to save/update user in Firestore
 const saveUserToFirestore = async (user, additionalData = {}) => {
     try {
@@ -210,6 +222,7 @@ function DiscordLayout() {
         // Default avatar
         return 'https://api.adorable.io/avatars/32/abott@adorable.png';
     };
+
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
@@ -300,41 +313,48 @@ function DiscordLayout() {
     }, [indicatorMessages, readChannels, auth.currentUser]);
 
     // Load all users from Firestore users collection
+    const loadAllUsers = async () => {
+        try {
+            const usersRef = firestore.collection('users');
+            const usersSnapshot = await usersRef.get();
+            
+            const allUsers = [];
+            usersSnapshot.forEach(doc => {
+                const userData = doc.data();
+                allUsers.push({
+                    uid: userData.uid || doc.id,
+                    uniqueKey: doc.id,
+                    displayName: userData.displayName || userData.username || 'Unknown User',
+                    photoURL: userData.photoURL || userData.profilePicture || '',
+                    guestCode: userData.guestCode || null,
+                    isAnonymous: userData.isAnonymous || false,
+                    lastSeen: userData.lastSeen || null,
+                    createdAt: userData.createdAt || null
+                });
+            });
+            
+            // Sort by last seen (most recent first)
+            allUsers.sort((a, b) => {
+                if (!a.lastSeen && !b.lastSeen) return 0;
+                if (!a.lastSeen) return 1;
+                if (!b.lastSeen) return -1;
+                return b.lastSeen.toDate() - a.lastSeen.toDate();
+            });
+            
+            setMembers(allUsers);
+        } catch (error) {
+            console.error('Error loading users:', error);
+        }
+    };
+
     React.useEffect(() => {
-        const loadAllUsers = async () => {
-            try {
-                const usersRef = firestore.collection('users');
-                const usersSnapshot = await usersRef.get();
-                
-                const allUsers = [];
-                usersSnapshot.forEach(doc => {
-                    const userData = doc.data();
-                    allUsers.push({
-                        uid: doc.id,
-                        displayName: userData.displayName || userData.username || 'Unknown User',
-                        photoURL: userData.photoURL || userData.profilePicture || '',
-                        guestCode: userData.guestCode || null,
-                        isAnonymous: userData.isAnonymous || false,
-                        lastSeen: userData.lastSeen || null,
-                        createdAt: userData.createdAt || null
-                    });
-                });
-                
-                // Sort by last seen (most recent first)
-                allUsers.sort((a, b) => {
-                    if (!a.lastSeen && !b.lastSeen) return 0;
-                    if (!a.lastSeen) return 1;
-                    if (!b.lastSeen) return -1;
-                    return b.lastSeen.toDate() - a.lastSeen.toDate();
-                });
-                
-                setMembers(allUsers);
-            } catch (error) {
-                console.error('Error loading users:', error);
-            }
-        };
-        
         loadAllUsers();
+    }, []);
+
+    // Listen for profile updates
+    React.useEffect(() => {
+        const unsubscribe = addProfileUpdateListener(loadAllUsers);
+        return unsubscribe;
     }, []);
 
     // Also extract members from current messages as backup
@@ -433,7 +453,9 @@ function DiscordLayout() {
                 </div>
                 
                 <div className="channel-sidebar-footer">
-                    <UserProfileButton onClick={() => setShowProfileModal(true)} />
+                    <UserProfileButton 
+                    onClick={() => setShowProfileModal(true)}
+                />
                     <SignOut />
                 </div>
             </div>
@@ -487,7 +509,7 @@ function DiscordLayout() {
             {/* Profile Modal */}
             {showProfileModal && (
                 <ProfileModal 
-                    onClose={() => setShowProfileModal(false)} 
+                    onClose={() => setShowProfileModal(false)}
                 />
             )}
 
@@ -1243,44 +1265,50 @@ function UserProfileButton({ onClick }) {
     const [userProfile, setUserProfile] = useState(null);
     
     // Get user profile data
-    React.useEffect(() => {
+    const getUserProfile = async () => {
         if (!user) return;
         
-        const getUserProfile = async () => {
-            try {
-                // Create unique document ID for guest users
-                let documentId = user.uid;
-                if (user.isAnonymous) {
-                    const guestCode = localStorage.getItem('guestCode');
-                    if (guestCode) {
-                        documentId = `guest_${guestCode}`;
-                    }
+        try {
+            // Create unique document ID for guest users
+            let documentId = user.uid;
+            if (user.isAnonymous) {
+                const guestCode = localStorage.getItem('guestCode');
+                if (guestCode) {
+                    documentId = `guest_${guestCode}`;
                 }
-                
-                const profileRef = firestore.collection('userProfiles').doc(documentId);
-                const profileDoc = await profileRef.get();
-                
-                if (profileDoc.exists) {
-                    setUserProfile(profileDoc.data());
-                } else {
-                    // Create default profile
-                    const defaultProfile = {
-                        username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : 'User'),
-                        aboutMe: '',
-                        profilePicture: user.photoURL || '',
-                        banner: '',
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    await profileRef.set(defaultProfile);
-                    setUserProfile(defaultProfile);
-                }
-            } catch (error) {
-                console.error('Error getting user profile:', error);
             }
-        };
-        
+            
+            const profileRef = firestore.collection('userProfiles').doc(documentId);
+            const profileDoc = await profileRef.get();
+            
+            if (profileDoc.exists) {
+                setUserProfile(profileDoc.data());
+            } else {
+                // Create default profile
+                const defaultProfile = {
+                    username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : 'User'),
+                    aboutMe: '',
+                    profilePicture: user.photoURL || '',
+                    banner: '',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await profileRef.set(defaultProfile);
+                setUserProfile(defaultProfile);
+            }
+        } catch (error) {
+            console.error('Error getting user profile:', error);
+        }
+    };
+
+    React.useEffect(() => {
         getUserProfile();
     }, [user]);
+
+    // Listen for profile updates
+    React.useEffect(() => {
+        const unsubscribe = addProfileUpdateListener(getUserProfile);
+        return unsubscribe;
+    }, []);
     
     const getDisplayName = () => {
         if (userProfile?.username) return userProfile.username;
@@ -1449,6 +1477,7 @@ function ProfileModal({ onClose }) {
                 }
             }
             
+            // Update user profile
             const profileRef = firestore.collection('userProfiles').doc(documentId);
             await profileRef.set({
                 username: userProfile.username,
@@ -1457,6 +1486,37 @@ function ProfileModal({ onClose }) {
                 banner: userProfile.banner,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+            
+            // Also update the main users collection for members list
+            const usersRef = firestore.collection('users').doc(documentId);
+            await usersRef.set({
+                displayName: userProfile.username,
+                username: userProfile.username,
+                photoURL: userProfile.profilePicture,
+                profilePicture: userProfile.profilePicture,
+                banner: userProfile.banner,
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            // Update messages with new display name
+            const messagesRef = firestore.collection('messages');
+            const userMessagesQuery = messagesRef.where('uid', '==', user.uid);
+            const userMessagesSnapshot = await userMessagesQuery.get();
+            
+            const batch = firestore.batch();
+            userMessagesSnapshot.forEach(doc => {
+                const messageRef = messagesRef.doc(doc.id);
+                batch.update(messageRef, {
+                    displayName: userProfile.username,
+                    photoURL: userProfile.profilePicture
+                });
+            });
+            
+            await batch.commit();
+            
+            // Trigger profile update event to refresh UI
+            triggerProfileUpdate();
             
             onClose();
         } catch (error) {
