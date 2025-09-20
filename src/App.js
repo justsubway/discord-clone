@@ -1288,7 +1288,7 @@ function UserProfileButton({ onClick }) {
                 const defaultProfile = {
                     username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : 'User'),
                     aboutMe: '',
-                    profilePicture: user.photoURL || '',
+                    profilePicture: (user.photoURL && user.photoURL !== '' ? user.photoURL : ''),
                     banner: '',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -1394,7 +1394,7 @@ function ProfileModal({ onClose }) {
                     setUserProfile({
                         username: data.username || user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : ''),
                         aboutMe: data.aboutMe || '',
-                        profilePicture: data.profilePicture || user.photoURL || '',
+                        profilePicture: data.profilePicture || (user.photoURL && user.photoURL !== '' ? user.photoURL : ''),
                         banner: data.banner || ''
                     });
                 } else {
@@ -1402,7 +1402,7 @@ function ProfileModal({ onClose }) {
                     setUserProfile({
                         username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : ''),
                         aboutMe: '',
-                        profilePicture: user.photoURL || '',
+                        profilePicture: (user.photoURL && user.photoURL !== '' ? user.photoURL : ''),
                         banner: ''
                     });
                 }
@@ -1489,15 +1489,32 @@ function ProfileModal({ onClose }) {
             
             // Also update the main users collection for members list
             const usersRef = firestore.collection('users').doc(documentId);
-            await usersRef.set({
+            
+            // For guest users, ensure we preserve the guestCode and handle photoURL properly
+            const updateData = {
                 displayName: userProfile.username,
                 username: userProfile.username,
-                photoURL: userProfile.profilePicture,
                 profilePicture: userProfile.profilePicture,
                 banner: userProfile.banner,
                 lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            };
+            
+            // Only set photoURL if there's a custom profile picture
+            if (userProfile.profilePicture && userProfile.profilePicture !== '') {
+                updateData.photoURL = userProfile.profilePicture;
+            }
+            
+            // For guest users, preserve the guestCode
+            if (user.isAnonymous) {
+                const guestCode = localStorage.getItem('guestCode');
+                if (guestCode) {
+                    updateData.guestCode = guestCode;
+                    updateData.isAnonymous = true;
+                }
+            }
+            
+            await usersRef.set(updateData, { merge: true });
             
             // Update messages with new display name
             const messagesRef = firestore.collection('messages');
@@ -1507,10 +1524,24 @@ function ProfileModal({ onClose }) {
             const batch = firestore.batch();
             userMessagesSnapshot.forEach(doc => {
                 const messageRef = messagesRef.doc(doc.id);
-                batch.update(messageRef, {
-                    displayName: userProfile.username,
-                    photoURL: userProfile.profilePicture
-                });
+                const messageUpdate = {
+                    displayName: userProfile.username
+                };
+                
+                // Only update photoURL if there's a custom profile picture
+                if (userProfile.profilePicture && userProfile.profilePicture !== '') {
+                    messageUpdate.photoURL = userProfile.profilePicture;
+                }
+                
+                // For guest users, ensure guestCode is preserved
+                if (user.isAnonymous) {
+                    const guestCode = localStorage.getItem('guestCode');
+                    if (guestCode) {
+                        messageUpdate.guestCode = guestCode;
+                    }
+                }
+                
+                batch.update(messageRef, messageUpdate);
             });
             
             await batch.commit();
