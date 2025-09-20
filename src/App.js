@@ -1655,21 +1655,24 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const messages = React.useMemo(() => {
         if (!messagesSnapshot?.docs) return [];
         
-        return messagesSnapshot.docs
-            .map(doc => ({
+        const mappedMessages = messagesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-            }))
-            .sort((a, b) => {
-                // Sort by createdAt ascending (oldest first, newest last)
-                const aTime = a.createdAt?.toDate?.() || new Date(0);
-                const bTime = b.createdAt?.toDate?.() || new Date(0);
-                return aTime.getTime() - bTime.getTime();
-            });
+        }));
+        
+        // Sort by createdAt ascending (oldest first, newest last)
+        return mappedMessages.sort((a, b) => {
+            const aTime = a.createdAt?.toDate?.() || new Date(0);
+            const bTime = b.createdAt?.toDate?.() || new Date(0);
+            return aTime.getTime() - bTime.getTime();
+        });
     }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
     console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
+    if (messages.length > 0) {
+        console.log('📝 Message order check:', messages.map(m => ({ id: m.id, text: m.text?.substring(0, 20), time: m.createdAt?.toDate?.()?.toISOString() })));
+    }
     if (messages.length === 0) {
         console.log('❌ NO MESSAGES FOUND - This is the problem!');
     }
