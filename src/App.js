@@ -541,7 +541,7 @@ function DiscordLayout() {
     React.useEffect(() => {
         loadAllUsers();
         loadChannels();
-    }, []);
+    }, []); // Empty dependency array - only run once
 
     // Listen for profile updates
     React.useEffect(() => {
@@ -2006,7 +2006,35 @@ function ProfileModal({ onClose }) {
         loadUserProfile();
     }, [user]);
     
-    // Handle image upload (base64 encoding - no Firebase Storage needed)
+    // Compress image to reduce file size
+    const compressImage = (file, maxWidth = 800, quality = 0.7) => {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                // Calculate new dimensions
+                let { width, height } = img;
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressedDataUrl);
+            };
+            
+            img.src = URL.createObjectURL(file);
+        });
+    };
+
+    // Handle image upload (base64 encoding with compression)
     const handleImageUpload = async (file, type) => {
         if (!file || !user) {
             console.log('No file or user:', { file: !!file, user: !!user });
@@ -2020,10 +2048,10 @@ function ProfileModal({ onClose }) {
             return;
         }
         
-        // Validate file size (max 2MB for base64 encoding)
-        const maxSize = 2 * 1024 * 1024; // 2MB
+        // Validate file size (max 5MB before compression)
+        const maxSize = 5 * 1024 * 1024; // 5MB
         if (file.size > maxSize) {
-            alert('Image file is too large. Please select a file smaller than 2MB.');
+            alert('Image file is too large. Please select a file smaller than 5MB.');
             return;
         }
         
@@ -2031,21 +2059,36 @@ function ProfileModal({ onClose }) {
         setUploadingImage(true);
         
         try {
-            // Convert file to base64
-            const base64String = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
-                reader.readAsDataURL(file);
-            });
+            // Compress image to reduce size
+            const compressedBase64 = await compressImage(file, 800, 0.7);
             
-            console.log('Image converted to base64 successfully');
+            // Check if compressed image is still too large for Firestore (1MB limit)
+            const sizeInBytes = (compressedBase64.length * 3) / 4; // Approximate base64 to bytes
+            const maxFirestoreSize = 1024 * 1024; // 1MB
             
-            // Update the profile state with base64 data
-            setUserProfile(prev => ({
-                ...prev,
-                [type]: base64String
-            }));
+            if (sizeInBytes > maxFirestoreSize) {
+                // Try with more compression
+                const moreCompressed = await compressImage(file, 600, 0.5);
+                const compressedSize = (moreCompressed.length * 3) / 4;
+                
+                if (compressedSize > maxFirestoreSize) {
+                    alert('Image is too large even after compression. Please try a smaller image.');
+                    setUploadingImage(false);
+                    return;
+                }
+                
+                console.log('Image compressed successfully (high compression)');
+                setUserProfile(prev => ({
+                    ...prev,
+                    [type]: moreCompressed
+                }));
+            } else {
+                console.log('Image compressed successfully');
+                setUserProfile(prev => ({
+                    ...prev,
+                    [type]: compressedBase64
+                }));
+            }
             
             setUploadingImage(false);
             console.log('Image processing completed successfully');
