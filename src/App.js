@@ -396,11 +396,30 @@ function DiscordLayout() {
                     roleIcon = userData.roleIcon || '👤';
                 } else {
                     // Calculate role information for users who don't have it stored yet
-                    const calculatedRole = getUserRole({
+                    const userForRoleCalc = {
                         uid: userData.uid || doc.id,
                         isAnonymous: userData.isAnonymous || false,
                         guestCode: userData.guestCode || null
-                    });
+                    };
+                    
+                    console.log('Calculating role for user:', userForRoleCalc, 'Available admins:', ROLE_SYSTEM.ADMINS, 'Available moderators:', ROLE_SYSTEM.MODERATORS);
+                    
+                    // Try both the stored UID and the document ID for role calculation
+                    let calculatedRole = getUserRole(userForRoleCalc);
+                    
+                    // If the stored UID doesn't match, try the document ID
+                    if (calculatedRole.name === 'User' && userData.uid && userData.uid !== doc.id) {
+                        const altUserForRoleCalc = {
+                            uid: doc.id,
+                            isAnonymous: userData.isAnonymous || false,
+                            guestCode: userData.guestCode || null
+                        };
+                        console.log('Trying alternative UID:', altUserForRoleCalc);
+                        calculatedRole = getUserRole(altUserForRoleCalc);
+                    }
+                    
+                    console.log('Final calculated role:', calculatedRole);
+                    
                     role = calculatedRole.name;
                     roleLevel = calculatedRole.level;
                     roleColor = calculatedRole.color;
@@ -873,49 +892,6 @@ function DiscordLayout() {
                         </div>
                     )}
 
-                    {/* Fallback Section for users with undefined roles */}
-                    {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).length > 0 && (
-                        <div className="role-section">
-                            <div className="role-section-header">
-                                <span>Other — {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).length}</span>
-                            </div>
-                            <div className="role-section-list">
-                                {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).map(member => {
-                                    const role = { name: member.role || 'User', color: member.roleColor || '#8e9297', icon: member.roleIcon || '👤' };
-                                    return (
-                                        <div 
-                                            key={member.uniqueKey || member.uid}
-                                            className={`member-item ${role.name.toLowerCase()}`}
-                                            onClick={(e) => {
-                                                const rect = e.target.getBoundingClientRect();
-                                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
-                                                setShowUserPreview(member);
-                                            }}
-                                        >
-                                            <img 
-                                                className="member-avatar"
-                                                src={getMemberAvatar(member)}
-                                                alt={member.displayName}
-                                            />
-                                            <div className="member-info">
-                                                <span 
-                                                    className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
-                                                    style={{ color: role.color }}
-                                                >
-                                                    {member.displayName}
-                                                </span>
-                                                {role.name !== 'User' && (
-                                                    <span className="member-role" style={{ color: role.color }}>
-                                                        {role.icon} {role.name}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
             
