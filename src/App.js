@@ -34,6 +34,61 @@ const triggerProfileUpdate = () => {
     profileUpdateListeners.forEach(callback => callback());
 };
 
+// Role system - Secure role assignment based on Firebase UID
+const ROLE_SYSTEM = {
+    // Admin UIDs - Add your Firebase UIDs here for admin access
+    ADMINS: [
+        // Add admin UIDs here - these will have full permissions
+        // Example: 'firebase-uid-1', 'firebase-uid-2'
+    ],
+    
+    // Moderator UIDs - Add your Firebase UIDs here for moderator access
+    MODERATORS: [
+        // Add moderator UIDs here - these will have moderation permissions
+        // Example: 'firebase-uid-3', 'firebase-uid-4'
+    ],
+    
+    // Role hierarchy (higher number = higher permission)
+    ROLES: {
+        USER: { level: 0, name: 'User', color: '#8e9297', icon: '👤' },
+        MODERATOR: { level: 1, name: 'Moderator', color: '#faa61a', icon: '🛡️' },
+        ADMIN: { level: 2, name: 'Admin', color: '#f04747', icon: '👑' }
+    }
+};
+
+// Function to get user role
+const getUserRole = (user) => {
+    if (!user || !user.uid) return ROLE_SYSTEM.ROLES.USER;
+    
+    if (ROLE_SYSTEM.ADMINS.includes(user.uid)) {
+        return ROLE_SYSTEM.ROLES.ADMIN;
+    }
+    
+    if (ROLE_SYSTEM.MODERATORS.includes(user.uid)) {
+        return ROLE_SYSTEM.ROLES.MODERATOR;
+    }
+    
+    return ROLE_SYSTEM.ROLES.USER;
+};
+
+// Function to check if user has permission
+const hasPermission = (user, permission) => {
+    const role = getUserRole(user);
+    
+    switch (permission) {
+        case 'delete_messages':
+            return role.level >= ROLE_SYSTEM.ROLES.MODERATOR.level;
+        case 'create_channels':
+            return role.level >= ROLE_SYSTEM.ROLES.MODERATOR.level;
+        case 'manage_roles':
+            return role.level >= ROLE_SYSTEM.ROLES.ADMIN.level;
+        case 'delete_channels':
+            return role.level >= ROLE_SYSTEM.ROLES.ADMIN.level;
+        default:
+            return false;
+    }
+};
+
 // Function to save/update user in Firestore
 const saveUserToFirestore = async (user, additionalData = {}) => {
     try {
@@ -44,6 +99,7 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
         }
         
         const userRef = firestore.collection('users').doc(documentId);
+        const userRole = getUserRole(user);
         const userData = {
             uid: user.uid,
             documentId: documentId, // Store the document ID for reference
@@ -52,6 +108,10 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
             email: user.email || '',
             isAnonymous: user.isAnonymous || false,
             guestCode: additionalData.guestCode || null,
+            role: userRole.name,
+            roleLevel: userRole.level,
+            roleColor: userRole.color,
+            roleIcon: userRole.icon,
             lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
             ...additionalData
         };
@@ -206,6 +266,9 @@ function DiscordLayout() {
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
     const [members, setMembers] = useState([]);
+    const [channels, setChannels] = useState(['general', 'random']); // Default channels
+    const [showCreateChannel, setShowCreateChannel] = useState(false);
+    const [newChannelName, setNewChannelName] = useState('');
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
@@ -333,8 +396,16 @@ function DiscordLayout() {
                 });
             });
             
-            // Sort by last seen (most recent first)
+            // Sort by role level (highest first), then by last seen
             allUsers.sort((a, b) => {
+                // First sort by role level (higher role = higher position)
+                const roleLevelA = a.roleLevel || 0;
+                const roleLevelB = b.roleLevel || 0;
+                if (roleLevelA !== roleLevelB) {
+                    return roleLevelB - roleLevelA;
+                }
+                
+                // Then sort by last seen (most recent first)
                 if (!a.lastSeen && !b.lastSeen) return 0;
                 if (!a.lastSeen) return 1;
                 if (!b.lastSeen) return -1;
@@ -356,6 +427,38 @@ function DiscordLayout() {
         const unsubscribe = addProfileUpdateListener(loadAllUsers);
         return unsubscribe;
     }, []);
+
+    // Create new channel
+    const createChannel = async () => {
+        if (!newChannelName.trim()) return;
+        
+        const channelName = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        if (!channelName) {
+            alert('Channel name can only contain letters, numbers, hyphens, and underscores');
+            return;
+        }
+        
+        if (channels.includes(channelName)) {
+            alert('Channel already exists');
+            return;
+        }
+        
+        try {
+            // Add channel to local state
+            setChannels(prev => [...prev, channelName]);
+            setNewChannelName('');
+            setShowCreateChannel(false);
+            
+            // Switch to new channel
+            setSelectedChannel(channelName);
+            
+            // Add to read channels
+            setReadChannels(prev => new Set([...prev, channelName]));
+        } catch (error) {
+            console.error('Error creating channel:', error);
+            alert('Error creating channel');
+        }
+    };
 
     // Also extract members from current messages as backup
     React.useEffect(() => {
@@ -422,32 +525,67 @@ function DiscordLayout() {
                             <span>Text Channels</span>
                         </div>
                         <div className="channel-list">
-                            <div 
-                                className={`channel ${selectedChannel === 'general' ? 'active' : ''} ${selectedChannel !== 'general' && unreadChannels.has('general') ? 'unread' : ''} ${selectedChannel !== 'general' && mentionedChannels.has('general') ? 'mentioned' : ''}`}
-                                onClick={() => setSelectedChannel('general')}
-                            >
-                                <span className="channel-icon">#</span>
-                                <span>general</span>
-                                {selectedChannel !== 'general' && mentionedChannels.has('general') && (
-                                    <span className="mention-indicator">@</span>
-                                )}
-                                {selectedChannel !== 'general' && unreadChannels.has('general') && !mentionedChannels.has('general') && (
-                                    <span className="unread-indicator"></span>
-                                )}
-                            </div>
-                            <div 
-                                className={`channel ${selectedChannel === 'random' ? 'active' : ''} ${selectedChannel !== 'random' && unreadChannels.has('random') ? 'unread' : ''} ${selectedChannel !== 'random' && mentionedChannels.has('random') ? 'mentioned' : ''}`}
-                                onClick={() => setSelectedChannel('random')}
-                            >
-                                <span className="channel-icon">#</span>
-                                <span>random</span>
-                                {selectedChannel !== 'random' && mentionedChannels.has('random') && (
-                                    <span className="mention-indicator">@</span>
-                                )}
-                                {selectedChannel !== 'random' && unreadChannels.has('random') && !mentionedChannels.has('random') && (
-                                    <span className="unread-indicator"></span>
-                                )}
-                            </div>
+                            {channels.map(channel => (
+                                <div 
+                                    key={channel}
+                                    className={`channel ${selectedChannel === channel ? 'active' : ''} ${selectedChannel !== channel && unreadChannels.has(channel) ? 'unread' : ''} ${selectedChannel !== channel && mentionedChannels.has(channel) ? 'mentioned' : ''}`}
+                                    onClick={() => setSelectedChannel(channel)}
+                                >
+                                    <span className="channel-icon">#</span>
+                                    <span>{channel}</span>
+                                    {selectedChannel !== channel && mentionedChannels.has(channel) && (
+                                        <span className="mention-indicator">@</span>
+                                    )}
+                                    {selectedChannel !== channel && unreadChannels.has(channel) && !mentionedChannels.has(channel) && (
+                                        <span className="unread-indicator"></span>
+                                    )}
+                                </div>
+                            ))}
+                            
+                            {/* Create Channel Button - Only for moderators/admins */}
+                            {hasPermission(auth.currentUser, 'create_channels') && (
+                                <div className="create-channel-section">
+                                    {!showCreateChannel ? (
+                                        <button 
+                                            className="create-channel-btn"
+                                            onClick={() => setShowCreateChannel(true)}
+                                            title="Create Channel"
+                                        >
+                                            <span className="channel-icon">+</span>
+                                            <span>Create Channel</span>
+                                        </button>
+                                    ) : (
+                                        <div className="create-channel-form">
+                                            <input
+                                                type="text"
+                                                value={newChannelName}
+                                                onChange={(e) => setNewChannelName(e.target.value)}
+                                                placeholder="Channel name"
+                                                className="channel-name-input"
+                                                onKeyPress={(e) => e.key === 'Enter' && createChannel()}
+                                                autoFocus
+                                            />
+                                            <div className="create-channel-actions">
+                                                <button 
+                                                    className="create-channel-confirm"
+                                                    onClick={createChannel}
+                                                >
+                                                    Create
+                                                </button>
+                                                <button 
+                                                    className="create-channel-cancel"
+                                                    onClick={() => {
+                                                        setShowCreateChannel(false);
+                                                        setNewChannelName('');
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -483,26 +621,39 @@ function DiscordLayout() {
                     <span>Members — {members.length}</span>
                 </div>
                 <div className="members-list">
-                    {members.map(member => (
-                        <div 
-                            key={member.uniqueKey || member.uid}
-                            className="member-item"
-                            onClick={(e) => {
-                                const rect = e.target.getBoundingClientRect();
-                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
-                                setShowUserPreview(member);
-                            }}
-                        >
-                            <img 
-                                className="member-avatar"
-                                src={getMemberAvatar(member)}
-                                alt={member.displayName}
-                            />
-                            <span className={`member-name ${member.isAnonymous ? 'guest' : ''}`}>
-                                {member.displayName}
-                            </span>
-                        </div>
-                    ))}
+                    {members.map(member => {
+                        const role = getUserRole(member);
+                        return (
+                            <div 
+                                key={member.uniqueKey || member.uid}
+                                className={`member-item ${role.name.toLowerCase()}`}
+                                onClick={(e) => {
+                                    const rect = e.target.getBoundingClientRect();
+                                    setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                    setShowUserPreview(member);
+                                }}
+                            >
+                                <img 
+                                    className="member-avatar"
+                                    src={getMemberAvatar(member)}
+                                    alt={member.displayName}
+                                />
+                                <div className="member-info">
+                                    <span 
+                                        className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
+                                        style={{ color: role.color }}
+                                    >
+                                        {member.displayName}
+                                    </span>
+                                    {role.level > 0 && (
+                                        <span className="member-role" style={{ color: role.color }}>
+                                            {role.icon} {role.name}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
             
@@ -1210,20 +1361,22 @@ function ChatMessage({ message, onUserClick }) {
                     <span className="reaction-icon">😀</span>
                 </button>
                 
-                {/* Edit/Delete buttons for own messages */}
-                {uid === auth.currentUser?.uid && !isEditing && (
+                {/* Edit/Delete buttons for own messages or moderators/admins */}
+                {((uid === auth.currentUser?.uid) || hasPermission(auth.currentUser, 'delete_messages')) && !isEditing && (
                     <>
-                        <button 
-                            className="edit-message-btn"
-                            onClick={() => setIsEditing(true)}
-                            title="Edit Message"
-                        >
-                            ✏️
-                        </button>
+                        {uid === auth.currentUser?.uid && (
+                            <button 
+                                className="edit-message-btn"
+                                onClick={() => setIsEditing(true)}
+                                title="Edit Message"
+                            >
+                                ✏️
+                            </button>
+                        )}
                         <button 
                             className="delete-message-btn"
                             onClick={handleDeleteMessage}
-                            title="Delete Message"
+                            title={uid === auth.currentUser?.uid ? "Delete Message" : "Delete Message (Moderator)"}
                         >
                             🗑️
                         </button>
@@ -1680,6 +1833,44 @@ function ProfileModal({ onClose }) {
                         </div>
                     </div>
                 </div>
+                
+                {/* Role Management Section - Only for Admins */}
+                {hasPermission(user, 'manage_roles') && (
+                    <div className="role-management-section">
+                        <h3>Role Management</h3>
+                        <div className="role-info">
+                            <p><strong>Current Role:</strong> <span style={{ color: getUserRole(user).color }}>{getUserRole(user).icon} {getUserRole(user).name}</span></p>
+                            <p className="role-description">
+                                {getUserRole(user).name === 'Admin' 
+                                    ? 'You have full permissions including role management, channel creation, and message moderation.'
+                                    : getUserRole(user).name === 'Moderator'
+                                    ? 'You can create channels and moderate messages.'
+                                    : 'You are a regular user with basic permissions.'
+                                }
+                            </p>
+                        </div>
+                        <div className="role-permissions">
+                            <h4>Your Permissions:</h4>
+                            <ul>
+                                <li className={hasPermission(user, 'delete_messages') ? 'enabled' : 'disabled'}>
+                                    {hasPermission(user, 'delete_messages') ? '✅' : '❌'} Delete Messages
+                                </li>
+                                <li className={hasPermission(user, 'create_channels') ? 'enabled' : 'disabled'}>
+                                    {hasPermission(user, 'create_channels') ? '✅' : '❌'} Create Channels
+                                </li>
+                                <li className={hasPermission(user, 'manage_roles') ? 'enabled' : 'disabled'}>
+                                    {hasPermission(user, 'manage_roles') ? '✅' : '❌'} Manage Roles
+                                </li>
+                                <li className={hasPermission(user, 'delete_channels') ? 'enabled' : 'disabled'}>
+                                    {hasPermission(user, 'delete_channels') ? '✅' : '❌'} Delete Channels
+                                </li>
+                            </ul>
+                        </div>
+                        <div className="role-note">
+                            <p><em>Note: Roles are managed by administrators through the code. Contact an admin to change your role.</em></p>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="profile-modal-footer">
                     <button 
