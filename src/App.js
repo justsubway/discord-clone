@@ -1666,6 +1666,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     //     }
     // }, [messages]);
     const [formValue, setFormValue] = useState('');
+    const messagesRef = firestore.collection('messages');
 
     // Mention system state
     const [showMentionDropdown, setShowMentionDropdown] = useState(false);
