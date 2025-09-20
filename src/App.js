@@ -282,6 +282,13 @@ function DiscordLayout() {
     const [showCreateServer, setShowCreateServer] = useState(false);
     const [newServerName, setNewServerName] = useState('');
     const [newServerDescription, setNewServerDescription] = useState('');
+    const [showServerContextMenu, setShowServerContextMenu] = useState(null);
+    const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    const [draggedChannel, setDraggedChannel] = useState(null);
+    const [editingChannel, setEditingChannel] = useState(null);
+    const [editingChannelName, setEditingChannelName] = useState('');
+    const [showServerIconModal, setShowServerIconModal] = useState(false);
+    const [newServerIcon, setNewServerIcon] = useState('');
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
@@ -453,6 +460,158 @@ function DiscordLayout() {
         } catch (error) {
             console.error('Error creating server:', error);
             alert('Error creating server. Please try again.');
+        }
+    };
+
+    // Delete a server
+    const deleteServer = async (serverId) => {
+        if (!window.confirm('Are you sure you want to delete this server? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            // Delete server
+            await firestore.collection('servers').doc(serverId).delete();
+            
+            // Delete server channels
+            await firestore.collection('channels').doc(serverId).delete();
+            
+            // Delete all messages in this server
+            const messagesRef = firestore.collection('messages');
+            const serverMessagesQuery = messagesRef.where('serverId', '==', serverId);
+            const serverMessagesSnapshot = await serverMessagesQuery.get();
+            
+            const batch = firestore.batch();
+            serverMessagesSnapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+            
+            // If this was the selected server, switch to another one
+            if (selectedServer?.id === serverId) {
+                const remainingServers = servers.filter(s => s.id !== serverId);
+                if (remainingServers.length > 0) {
+                    setSelectedServer(remainingServers[0]);
+                } else {
+                    setSelectedServer(null);
+                }
+            }
+            
+            // Reload servers
+            await loadServers();
+            
+            console.log('Server deleted successfully:', serverId);
+        } catch (error) {
+            console.error('Error deleting server:', error);
+            alert('Error deleting server. Please try again.');
+        }
+    };
+
+    // Handle channel drag start
+    const handleChannelDragStart = (e, channel) => {
+        setDraggedChannel(channel);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    // Handle channel drag over
+    const handleChannelDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    // Handle channel drop
+    const handleChannelDrop = async (e, targetCategory) => {
+        e.preventDefault();
+        
+        if (!draggedChannel || !selectedServer) return;
+        
+        // Don't move if it's already in the same category
+        if (draggedChannel.category === targetCategory) {
+            setDraggedChannel(null);
+            return;
+        }
+        
+        try {
+            // Update channel category
+            const updatedChannels = channels.map(channel => 
+                channel.name === draggedChannel.name 
+                    ? { ...channel, category: targetCategory }
+                    : channel
+            );
+            
+            setChannels(updatedChannels);
+            await saveChannels(updatedChannels);
+            
+            console.log(`Moved channel ${draggedChannel.name} to ${targetCategory}`);
+        } catch (error) {
+            console.error('Error moving channel:', error);
+            alert('Error moving channel. Please try again.');
+        } finally {
+            setDraggedChannel(null);
+        }
+    };
+
+    // Handle channel rename
+    const handleChannelRename = async (channelName, newName) => {
+        if (!newName.trim() || newName.trim() === channelName) {
+            setEditingChannel(null);
+            setEditingChannelName('');
+            return;
+        }
+        
+        try {
+            // Update channel name
+            const updatedChannels = channels.map(channel => 
+                channel.name === channelName 
+                    ? { ...channel, name: newName.trim() }
+                    : channel
+            );
+            
+            setChannels(updatedChannels);
+            await saveChannels(updatedChannels);
+            
+            // If this was the selected channel, update it
+            if (selectedChannel === channelName) {
+                setSelectedChannel(newName.trim());
+            }
+            
+            setEditingChannel(null);
+            setEditingChannelName('');
+            
+            console.log(`Renamed channel ${channelName} to ${newName.trim()}`);
+        } catch (error) {
+            console.error('Error renaming channel:', error);
+            alert('Error renaming channel. Please try again.');
+        }
+    };
+
+    // Handle server icon change
+    const handleServerIconChange = async (serverId, newIcon) => {
+        if (!newIcon.trim()) {
+            alert('Please enter an icon');
+            return;
+        }
+        
+        try {
+            await firestore.collection('servers').doc(serverId).update({
+                icon: newIcon.trim(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            // Update local state
+            setServers(prev => prev.map(server => 
+                server.id === serverId 
+                    ? { ...server, icon: newIcon.trim() }
+                    : server
+            ));
+            
+            setNewServerIcon('');
+            setShowServerIconModal(false);
+            
+            console.log(`Updated server icon to ${newIcon.trim()}`);
+        } catch (error) {
+            console.error('Error updating server icon:', error);
+            alert('Error updating server icon. Please try again.');
         }
     };
 
@@ -886,9 +1045,14 @@ function DiscordLayout() {
                         key={server.id}
                         className={`server-icon ${selectedServer?.id === server.id ? 'active' : ''}`}
                         onClick={() => setSelectedServer(server)}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenuPosition({ x: e.clientX, y: e.clientY });
+                            setShowServerContextMenu(server.id);
+                        }}
                         title={server.name}
                     >
-                        {server.name.charAt(0).toUpperCase()}
+                        {server.icon || server.name.charAt(0).toUpperCase()}
                     </div>
                 ))}
                 <div 
@@ -899,6 +1063,33 @@ function DiscordLayout() {
                     +
                 </div>
             </div>
+
+            {/* Server Context Menu */}
+            {showServerContextMenu && (
+                <div 
+                    className="context-menu"
+                    style={{
+                        position: 'fixed',
+                        left: contextMenuPosition.x,
+                        top: contextMenuPosition.y,
+                        zIndex: 1000
+                    }}
+                    onMouseLeave={() => setShowServerContextMenu(null)}
+                >
+                    <div className="context-menu-item" onClick={() => {
+                        setShowServerContextMenu(null);
+                        setShowServerIconModal(true);
+                    }}>
+                        Change Icon
+                    </div>
+                    <div className="context-menu-item danger" onClick={() => {
+                        setShowServerContextMenu(null);
+                        deleteServer(showServerContextMenu);
+                    }}>
+                        Delete Server
+                    </div>
+                </div>
+            )}
 
             {/* Channel Sidebar */}
             <div className="channel-sidebar">
@@ -935,15 +1126,44 @@ function DiscordLayout() {
                                         <span className="category-name">{category}</span>
                                         <span className="category-count">{categoryChannels.length}</span>
                         </div>
-                        <div className="channel-list">
+                        <div 
+                            className="channel-list"
+                            onDragOver={handleChannelDragOver}
+                            onDrop={(e) => handleChannelDrop(e, category)}
+                        >
                                         {categoryChannels.map(channel => (
                             <div 
                                                 key={channel.name}
-                                                className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
+                                                className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''} ${draggedChannel?.name === channel.name ? 'dragging' : ''}`}
                                                 onClick={() => setSelectedChannel(channel.name)}
+                                                draggable
+                                                onDragStart={(e) => handleChannelDragStart(e, channel)}
+                                                onDoubleClick={() => {
+                                                    setEditingChannel(channel.name);
+                                                    setEditingChannelName(channel.name);
+                                                }}
                             >
                                 <span className="channel-icon">#</span>
-                                                <span className="channel-name">{channel.name}</span>
+                                                {editingChannel === channel.name ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editingChannelName}
+                                                        onChange={(e) => setEditingChannelName(e.target.value)}
+                                                        onBlur={() => handleChannelRename(channel.name, editingChannelName)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                handleChannelRename(channel.name, editingChannelName);
+                                                            } else if (e.key === 'Escape') {
+                                                                setEditingChannel(null);
+                                                                setEditingChannelName('');
+                                                            }
+                                                        }}
+                                                        className="channel-rename-input"
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <span className="channel-name">{channel.name}</span>
+                                                )}
                                                 {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
                                     <span className="mention-indicator">@</span>
                                 )}
@@ -1274,6 +1494,16 @@ function DiscordLayout() {
                     setServerName={setNewServerName}
                     serverDescription={newServerDescription}
                     setServerDescription={setNewServerDescription}
+                />
+            )}
+
+            {/* Server Icon Change Modal */}
+            {showServerIconModal && (
+                <ServerIconModal 
+                    onClose={() => setShowServerIconModal(false)}
+                    onIconChange={(icon) => handleServerIconChange(showServerContextMenu, icon)}
+                    serverIcon={newServerIcon}
+                    setServerIcon={setNewServerIcon}
                 />
             )}
         </>
@@ -2857,6 +3087,65 @@ function CreateServerModal({ onClose, onCreateServer, serverName, setServerName,
                         </button>
                         <button type="submit" className="create-btn">
                             Create Server
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function ServerIconModal({ onClose, onIconChange, serverIcon, setServerIcon }) {
+    const modalRef = useRef(null);
+    
+    // Close modal when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (modalRef.current && !modalRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onIconChange(serverIcon);
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content create-server-modal" ref={modalRef}>
+                <div className="modal-header">
+                    <h2>Change Server Icon</h2>
+                    <button className="modal-close" onClick={onClose}>×</button>
+                </div>
+                
+                <form onSubmit={handleSubmit} className="create-server-form">
+                    <div className="form-group">
+                        <label htmlFor="serverIcon">Server Icon *</label>
+                        <input
+                            type="text"
+                            id="serverIcon"
+                            value={serverIcon}
+                            onChange={(e) => setServerIcon(e.target.value)}
+                            placeholder="Enter emoji or text (e.g., 🎮, A, 1)"
+                            maxLength={2}
+                            required
+                        />
+                        <small className="form-help">Enter a single emoji or 1-2 characters</small>
+                    </div>
+                    
+                    <div className="modal-actions">
+                        <button type="button" className="cancel-btn" onClick={onClose}>
+                            Cancel
+                        </button>
+                        <button type="submit" className="create-btn">
+                            Change Icon
                         </button>
                     </div>
                 </form>

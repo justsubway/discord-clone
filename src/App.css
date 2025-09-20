@@ -1038,6 +1038,11 @@ html, body {
 .create-server-modal {
   max-width: 500px;
   width: 90vw;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
 }
 
 .create-server-form {
@@ -1126,6 +1131,78 @@ html, body {
 .create-btn:disabled {
   background-color: #4f545c;
   cursor: not-allowed;
+}
+
+/* Context Menu */
+.context-menu {
+  background-color: #2f3136;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  min-width: 150px;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  color: #dcddde;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.context-menu-item:hover {
+  background-color: #3c3f44;
+}
+
+.context-menu-item.danger {
+  color: #f04747;
+}
+
+.context-menu-item.danger:hover {
+  background-color: #f04747;
+  color: white;
+}
+
+/* Channel Drag and Drop */
+.channel.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+}
+
+.channel-list {
+  min-height: 20px;
+  transition: background-color 0.2s ease;
+}
+
+.channel-list.drag-over {
+  background-color: #3c3f44;
+  border-radius: 4px;
+}
+
+/* Channel Rename Input */
+.channel-rename-input {
+  background-color: transparent;
+  border: 1px solid #5865f2;
+  border-radius: 4px;
+  color: #dcddde;
+  font-size: 16px;
+  font-family: inherit;
+  padding: 2px 6px;
+  outline: none;
+  width: 100%;
+  max-width: 150px;
+}
+
+.channel-rename-input:focus {
+  background-color: #40444b;
+}
+
+/* Form Help Text */
+.form-help {
+  font-size: 12px;
+  color: #8e9297;
+  margin-top: 4px;
 }
 
 .text-sm {
