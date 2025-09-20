@@ -760,10 +760,12 @@ function DiscordLayout() {
         : messagesRef.orderBy('createdAt', 'desc').limit(100);
     const [indicatorSnapshot] = useCollection(indicatorQuery);
     
-    const indicatorMessages = indicatorSnapshot?.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    })) || [];
+    const indicatorMessages = React.useMemo(() => {
+        return indicatorSnapshot?.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) || [];
+    }, [indicatorSnapshot]);
     
     // Mark channel as read when switching to it
     React.useEffect(() => {
@@ -801,7 +803,7 @@ function DiscordLayout() {
 
     // Check for mentions and unread messages
     React.useEffect(() => {
-        if (!indicatorMessages || !auth.currentUser) return;
+        if (!indicatorMessages || !auth.currentUser || indicatorMessages.length === 0) return;
         
         const currentUser = auth.currentUser;
         const currentUserId = currentUser.uid;
@@ -847,15 +849,24 @@ function DiscordLayout() {
             }
         });
         
-        // console.log('🔔 Channel indicators update:', {
-        //     unreadChannels: Array.from(newUnreadChannels),
-        //     mentionedChannels: Array.from(newMentionedChannels),
-        //     readChannels: Array.from(readChannels),
-        //     selectedChannel
-        // });
+        // Only update state if there are actual changes
+        setUnreadChannels(prev => {
+            const prevArray = Array.from(prev);
+            const newArray = Array.from(newUnreadChannels);
+            if (prevArray.length !== newArray.length || !prevArray.every(item => newArray.includes(item))) {
+                return newUnreadChannels;
+            }
+            return prev;
+        });
         
-        setUnreadChannels(newUnreadChannels);
-        setMentionedChannels(newMentionedChannels);
+        setMentionedChannels(prev => {
+            const prevArray = Array.from(prev);
+            const newArray = Array.from(newMentionedChannels);
+            if (prevArray.length !== newArray.length || !prevArray.every(item => newArray.includes(item))) {
+                return newMentionedChannels;
+            }
+            return prev;
+        });
     }, [indicatorMessages, auth.currentUser]);
 
     // Load all users from Firestore users collection
@@ -1061,7 +1072,7 @@ function DiscordLayout() {
 
     // Also extract members from current messages as backup
     React.useEffect(() => {
-        if (!indicatorMessages) return;
+        if (!indicatorMessages || indicatorMessages.length === 0) return;
         
         const memberMap = new Map();
         indicatorMessages.forEach(msg => {
@@ -1084,16 +1095,18 @@ function DiscordLayout() {
         setMembers(prev => {
             const newMembers = Array.from(memberMap.values());
             const existingMap = new Map(prev.map(member => [member.uniqueKey || member.uid, member]));
+            let hasChanges = false;
             
             // Add new members that aren't already in the list
             newMembers.forEach(member => {
                 const key = member.uniqueKey || member.uid;
                 if (!existingMap.has(key)) {
                     existingMap.set(key, member);
+                    hasChanges = true;
                 }
             });
             
-            return Array.from(existingMap.values());
+            return hasChanges ? Array.from(existingMap.values()) : prev;
         });
     }, [indicatorMessages]);
     
