@@ -1622,9 +1622,6 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     
     const dummy = useRef();
     const messagesContainerRef = useRef();
-    const lastMessageCountRef = useRef(0);
-    const [messagesReady, setMessagesReady] = useState(false);
-    const [stableMessages, setStableMessages] = useState([]);
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
@@ -1654,90 +1651,23 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     console.log('🔍 FIRESTORE RESULT - Loading:', loading, 'Error:', error);
     console.log('🔍 FIRESTORE RESULT - Snapshot docs:', messagesSnapshot?.docs?.length || 0);
     
-    // Convert snapshot to data with IDs and sort by createdAt
+    // Simple message processing - just get messages and sort them
     const messages = React.useMemo(() => {
         if (!messagesSnapshot?.docs) return [];
         
-        const mappedMessages = messagesSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        
-        // Sort by createdAt ascending (oldest first, newest last)
-        const sorted = mappedMessages.sort((a, b) => {
-            // Handle both Firestore Timestamp objects and regular dates
-            let aTime, bTime;
-            
-            if (a.createdAt && typeof a.createdAt.toDate === 'function') {
-                aTime = a.createdAt.toDate();
-            } else if (a.createdAt instanceof Date) {
-                aTime = a.createdAt;
-            } else {
-                aTime = new Date(0);
-            }
-            
-            if (b.createdAt && typeof b.createdAt.toDate === 'function') {
-                bTime = b.createdAt.toDate();
-            } else if (b.createdAt instanceof Date) {
-                bTime = b.createdAt;
-            } else {
-                bTime = new Date(0);
-            }
-            
-            const timeDiff = aTime.getTime() - bTime.getTime();
-            
-            // Debug: Log individual timestamps
-            console.log('🕐 SORTING:', {
-                a: { id: a.id, time: aTime.toISOString(), timestamp: aTime.getTime() },
-                b: { id: b.id, time: bTime.toISOString(), timestamp: bTime.getTime() },
-                diff: timeDiff
+        return messagesSnapshot.docs
+            .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }))
+            .sort((a, b) => {
+                // Simple sort: oldest first, newest last
+                const aTime = a.createdAt?.toDate?.() || new Date(0);
+                const bTime = b.createdAt?.toDate?.() || new Date(0);
+                return aTime.getTime() - bTime.getTime();
             });
-            
-            return timeDiff;
-        });
-        
-        // Debug: Log the sorted order with timestamps
-        console.log('📝 SORTED MESSAGES:', sorted.map(m => ({ 
-            id: m.id, 
-            text: m.text?.substring(0, 20), 
-            time: m.createdAt?.toDate?.()?.toISOString(),
-            timestamp: m.createdAt?.toDate?.()?.getTime()
-        })));
-        
-        return sorted;
     }, [messagesSnapshot]);
     
-    // Debug: Log messages with comprehensive debugging
-    console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
-    
-    // Update stable messages only when there's a real change
-    React.useEffect(() => {
-        if (messages.length !== lastMessageCountRef.current) {
-            console.log('📊 MESSAGE COUNT CHANGED:', lastMessageCountRef.current, '->', messages.length);
-            lastMessageCountRef.current = messages.length;
-            
-            // Update stable messages immediately
-            console.log('🔄 UPDATING STABLE MESSAGES:', messages.map(m => ({ 
-                id: m.id, 
-                text: m.text?.substring(0, 20), 
-                time: m.createdAt?.toDate?.()?.toISOString()
-            })));
-            setStableMessages([...messages]);
-            setMessagesReady(true);
-        }
-    }, [messages]);
-    
-    if (messages.length > 0) {
-        console.log('📝 Message order check:', messages.map(m => ({ 
-            id: m.id, 
-            text: m.text?.substring(0, 20), 
-            time: m.createdAt?.toDate?.()?.toISOString(),
-            timestamp: m.createdAt?.toDate?.()?.getTime()
-        })));
-    }
-    if (messages.length === 0) {
-        console.log('❌ NO MESSAGES FOUND - This is the problem!');
-    }
     
     const [formValue, setFormValue] = useState('');
     const messagesRef = firestore.collection('messages');
@@ -2011,12 +1941,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, [formValue, channel, selectedServer, auth.currentUser, messagesRef]);
 
-    // Filter messages for the current channel using stable messages
+    // Filter messages for the current channel
     const filteredMessages = React.useMemo(() => {
-        if (!stableMessages || stableMessages.length === 0) return [];
+        if (!messages || messages.length === 0) return [];
         
-        const filtered = stableMessages
-        .filter(msg => {
+        return messages.filter(msg => {
             // If message has channel property, filter by it
             if (msg.channel) {
                 return msg.channel === channel;
@@ -2024,23 +1953,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             // If message doesn't have channel property (old messages), show in general
             return channel === 'general';
         });
-        
-        console.log('🔍 FILTERED MESSAGES - Channel:', channel, 'Count:', filtered.length);
-        if (filtered.length > 0) {
-            console.log('✅ Filtered message IDs:', filtered.map(m => m.id));
-        } else {
-            console.log('❌ NO FILTERED MESSAGES - Check channel filtering logic!');
-        }
-        
-        return filtered;
-    }, [stableMessages, channel]);
+    }, [messages, channel]);
 
     // console.log('Filtered messages count:', filteredMessages.length);
 
-    // Debug: Log what we're about to render
-    console.log('🎨 RENDERING - About to render', filteredMessages.length, 'messages');
-
-    // Simple message list rendering
+    // Simple message rendering
     const messageList = React.useMemo(() => {
         if (filteredMessages.length === 0) {
             return (
