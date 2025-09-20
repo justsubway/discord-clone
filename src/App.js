@@ -393,7 +393,11 @@ function DiscordLayout() {
                     guestCode: userData.guestCode || null,
                     isAnonymous: userData.isAnonymous || false,
                     lastSeen: userData.lastSeen || null,
-                    createdAt: userData.createdAt || null
+                    createdAt: userData.createdAt || null,
+                    role: userData.role || 'User',
+                    roleLevel: userData.roleLevel || 0,
+                    roleColor: userData.roleColor || '#8e9297',
+                    roleIcon: userData.roleIcon || '👤'
                 });
             });
             
@@ -691,14 +695,14 @@ function DiscordLayout() {
                 </div>
                 <div className="members-list">
                     {/* Admins Section */}
-                    {members.filter(member => getUserRole(member).name === 'Admin').length > 0 && (
+                    {members.filter(member => member.role === 'Admin').length > 0 && (
                         <div className="role-section">
                             <div className="role-section-header">
-                                <span>Administrators — {members.filter(member => getUserRole(member).name === 'Admin').length}</span>
+                                <span>Administrators — {members.filter(member => member.role === 'Admin').length}</span>
                             </div>
                             <div className="role-section-list">
-                                {members.filter(member => getUserRole(member).name === 'Admin').map(member => {
-                                    const role = getUserRole(member);
+                                {members.filter(member => member.role === 'Admin').map(member => {
+                                    const role = { name: member.role, color: member.roleColor, icon: member.roleIcon };
                                     return (
                                         <div 
                                             key={member.uniqueKey || member.uid}
@@ -733,14 +737,14 @@ function DiscordLayout() {
                     )}
 
                     {/* Moderators Section */}
-                    {members.filter(member => getUserRole(member).name === 'Moderator').length > 0 && (
+                    {members.filter(member => member.role === 'Moderator').length > 0 && (
                         <div className="role-section">
                             <div className="role-section-header">
-                                <span>Moderators — {members.filter(member => getUserRole(member).name === 'Moderator').length}</span>
+                                <span>Moderators — {members.filter(member => member.role === 'Moderator').length}</span>
                             </div>
                             <div className="role-section-list">
-                                {members.filter(member => getUserRole(member).name === 'Moderator').map(member => {
-                                    const role = getUserRole(member);
+                                {members.filter(member => member.role === 'Moderator').map(member => {
+                                    const role = { name: member.role, color: member.roleColor, icon: member.roleIcon };
                                     return (
                                         <div 
                                             key={member.uniqueKey || member.uid}
@@ -775,14 +779,14 @@ function DiscordLayout() {
                     )}
 
                     {/* Members Section */}
-                    {members.filter(member => getUserRole(member).name === 'User').length > 0 && (
+                    {members.filter(member => member.role === 'User').length > 0 && (
                         <div className="role-section">
                             <div className="role-section-header">
-                                <span>Members — {members.filter(member => getUserRole(member).name === 'User').length}</span>
+                                <span>Members — {members.filter(member => member.role === 'User').length}</span>
                             </div>
                             <div className="role-section-list">
-                                {members.filter(member => getUserRole(member).name === 'User').map(member => {
-                                    const role = getUserRole(member);
+                                {members.filter(member => member.role === 'User').map(member => {
+                                    const role = { name: member.role, color: member.roleColor, icon: member.roleIcon };
                                     return (
                                         <div 
                                             key={member.uniqueKey || member.uid}
@@ -1809,11 +1813,16 @@ function ProfileModal({ onClose }) {
             const usersRef = firestore.collection('users').doc(documentId);
             
             // For guest users, ensure we preserve the guestCode and handle photoURL properly
+            const currentUserRole = getUserRole(user);
             const updateData = {
                 displayName: userProfile.username,
                 username: userProfile.username,
                 profilePicture: userProfile.profilePicture,
                 banner: userProfile.banner,
+                role: currentUserRole.name,
+                roleLevel: currentUserRole.level,
+                roleColor: currentUserRole.color,
+                roleIcon: currentUserRole.icon,
                 lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
@@ -1840,10 +1849,15 @@ function ProfileModal({ onClose }) {
             const userMessagesSnapshot = await userMessagesQuery.get();
             
             const batch = firestore.batch();
+            const messageUserRole = getUserRole(user);
             userMessagesSnapshot.forEach(doc => {
                 const messageRef = messagesRef.doc(doc.id);
                 const messageUpdate = {
-                    displayName: userProfile.username
+                    displayName: userProfile.username,
+                    role: messageUserRole.name,
+                    roleLevel: messageUserRole.level,
+                    roleColor: messageUserRole.color,
+                    roleIcon: messageUserRole.icon
                 };
                 
                 // Only update photoURL if there's a custom profile picture
