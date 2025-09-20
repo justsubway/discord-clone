@@ -973,11 +973,11 @@ function ChatRoom({ channel, onUserClick }) {
     })) || [];
     
     // Debug: Check if messages have IDs (reduced logging)
-    React.useEffect(() => {
-        if (messages && messages.length > 0) {
-            console.log('🔍 Message IDs check:', messages.length, 'messages loaded');
-        }
-    }, [messages]);
+    // React.useEffect(() => {
+    //     if (messages && messages.length > 0) {
+    //         console.log('🔍 Message IDs check:', messages.length, 'messages loaded');
+    //     }
+    // }, [messages]);
     const [formValue, setFormValue] = useState('');
 
     // Mention system state
