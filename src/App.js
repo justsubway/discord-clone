@@ -428,7 +428,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages, readChannels]);
+    }, [indicatorMessages]);
 
     // Load all users from Firestore users collection
     const loadAllUsers = async () => {
@@ -2035,26 +2035,48 @@ function ProfileModal({ onClose }) {
         try {
             const fileExtension = file.name.split('.').pop();
             const fileName = `${user.uid}_${type}_${Date.now()}.${fileExtension}`;
-            const storageRef = ref(storageV9, `profile-images/${fileName}`);
             
             console.log('Uploading to:', `profile-images/${fileName}`);
             
-            // Upload the file using modern Firebase v9+ API
-            await uploadBytes(storageRef, file);
-            console.log('File uploaded successfully');
+            // Try using the compat storage first (might work better with CORS)
+            const storageRef = storage.ref().child(`profile-images/${fileName}`);
             
-            // Get the download URL using modern Firebase v9+ API
-            const downloadURL = await getDownloadURL(storageRef);
-            console.log('Got download URL:', downloadURL);
+            // Upload the file using compat API
+            const uploadTask = storageRef.put(file);
             
-            // Update the profile state
-            setUserProfile(prev => ({
-                ...prev,
-                [type]: downloadURL
-            }));
-            
-            setUploadingImage(false);
-            console.log('Image upload completed successfully');
+            // Wait for upload to complete
+            await new Promise((resolve, reject) => {
+                uploadTask.on('state_changed', 
+                    (snapshot) => {
+                        // Progress tracking
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        console.log(`Upload is ${progress}% done`);
+                    },
+                    (error) => {
+                        console.error('Upload error:', error);
+                        reject(error);
+                    },
+                    async () => {
+                        try {
+                            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                            console.log('Got download URL:', downloadURL);
+                            
+                            // Update the profile state
+                            setUserProfile(prev => ({
+                                ...prev,
+                                [type]: downloadURL
+                            }));
+                            
+                            setUploadingImage(false);
+                            console.log('Image upload completed successfully');
+                            resolve();
+                        } catch (error) {
+                            console.error('Error getting download URL:', error);
+                            reject(error);
+                        }
+                    }
+                );
+            });
             
         } catch (error) {
             console.error('Error uploading image:', error);
