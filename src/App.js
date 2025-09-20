@@ -410,7 +410,15 @@ function DiscordLayout() {
             
             // Check for mentions (only if message contains @ and is from someone else)
             if (msg.text && msg.text.includes('@') && msg.uid !== currentUserId) {
-                const isMentioned = isUserMentioned(msg.text, currentUser);
+                // Note: We can't use async/await in forEach, so we'll check mentions in the ChatRoom component instead
+                // This is a simplified check for now
+                const displayName = currentUser.isAnonymous 
+                    ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}`
+                    : currentUser.displayName || 'Anonymous';
+                const escapedName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const mentionPattern = new RegExp(`@${escapedName}(?!\\S)`, 'i');
+                const isMentioned = mentionPattern.test(msg.text);
+                
                 if (isMentioned) {
                     newMentionedChannels.add(channel);
                 }
@@ -1209,11 +1217,14 @@ function ChatRoom({ channel, onUserClick }) {
         
         // Check if this new message mentions the current user
         if (latestMessage.text && latestMessage.text.includes('@') && latestMessage.uid !== currentUser.uid) {
-            const isMentioned = isUserMentioned(latestMessage.text, currentUser);
-            if (isMentioned) {
-                console.log('🔔 New mention detected! Playing sound immediately.');
-                playMentionSound();
-            }
+            isUserMentioned(latestMessage.text, currentUser).then(isMentioned => {
+                if (isMentioned) {
+                    console.log('🔔 New mention detected! Playing sound immediately.');
+                    playMentionSound();
+                }
+            }).catch(error => {
+                console.error('Error checking mention:', error);
+            });
         }
     }, [messages, lastMessageId]);
 
@@ -1225,9 +1236,9 @@ function ChatRoom({ channel, onUserClick }) {
         const value = e.target.value;
         const cursorPosition = e.target.selectionStart;
         
-        // Check for @ mention
+        // Check for @ mention (updated to handle spaces)
         const textBeforeCursor = value.substring(0, cursorPosition);
-        const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
+        const mentionMatch = textBeforeCursor.match(/@([^\s]*(?:\s+[^\s]*)*)$/);
         
         if (mentionMatch) {
             setShowMentionDropdown(true);
@@ -1465,7 +1476,7 @@ const playMentionSound = () => {
 };
 
 // Function to check if current user is mentioned in a message
-const isUserMentioned = (messageText, currentUser) => {
+const isUserMentioned = async (messageText, currentUser) => {
     if (!currentUser || !messageText) return false;
     
     // Quick check: if message doesn't contain @, no mention possible
@@ -1475,16 +1486,30 @@ const isUserMentioned = (messageText, currentUser) => {
     let displayName;
     if (currentUser.isAnonymous) {
         const guestCode = localStorage.getItem('guestCode');
-        // Try to get custom username from database first
-        // This is a simplified version - in a real app you'd want to cache this
-        displayName = `Guest ${guestCode || 'XXXX'}`; // Fallback to Guest format for mentions
+        // Get custom username from database for guest users
+        try {
+            const userDocId = `guest_${guestCode}`;
+            const userDoc = await firestore.collection('users').doc(userDocId).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                displayName = userData.displayName || userData.username;
+            }
+        } catch (error) {
+            console.error('Error fetching guest user data for mention:', error);
+        }
+        
+        // Fallback to Guest format if no custom username found
+        if (!displayName) {
+            displayName = `Guest ${guestCode || 'XXXX'}`;
+        }
     } else {
         displayName = currentUser.displayName || 'Anonymous';
     }
     
-    // Create a regex pattern that matches @displayName with word boundaries
+    // Create a regex pattern that matches @displayName (with or without spaces)
     const escapedName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const mentionPattern = new RegExp(`@${escapedName}\\b`, 'i');
+    // Updated regex to handle usernames with spaces: @displayName(?!\S)
+    const mentionPattern = new RegExp(`@${escapedName}(?!\\S)`, 'i');
     
     const isMentioned = mentionPattern.test(messageText);
     
@@ -1690,7 +1715,8 @@ function ChatMessage({ message, onUserClick }) {
         if (!text) return '';
         
         // Split text by mentions and render each part
-        const parts = text.split(/(@\w+)/g);
+        // Updated regex to match @username with spaces: @[^\s]+(?:\s+[^\s]+)*
+        const parts = text.split(/(@[^\s]+(?:\s+[^\s]+)*)/g);
         
         return parts.map((part, index) => {
             if (part.startsWith('@')) {
