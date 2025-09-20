@@ -1,0 +1,5 @@
+---
+description: Do not give a summary of what you created/edited unless absolutely necessary or explicitely asked for it.
+globs:
+alwaysApply: true
+---

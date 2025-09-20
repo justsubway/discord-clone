@@ -266,10 +266,11 @@ function DiscordLayout() {
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
-    const [members, setMembers] = useState([]);
-    const [channels, setChannels] = useState(['general', 'random']); // Default channels
-    const [showCreateChannel, setShowCreateChannel] = useState(false);
-    const [newChannelName, setNewChannelName] = useState('');
+      const [members, setMembers] = useState([]);
+      const [channels, setChannels] = useState(['general', 'random']); // Default channels
+      const [channelsLoaded, setChannelsLoaded] = useState(false);
+      const [showCreateChannel, setShowCreateChannel] = useState(false);
+      const [newChannelName, setNewChannelName] = useState('');
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
@@ -285,6 +286,43 @@ function DiscordLayout() {
         
         // Default avatar
         return 'https://api.adorable.io/avatars/32/abott@adorable.png';
+    };
+
+    // Load channels from Firestore
+    const loadChannels = async () => {
+        try {
+            const channelsRef = firestore.collection('channels').doc('main');
+            const channelsDoc = await channelsRef.get();
+            
+            if (channelsDoc.exists) {
+                const channelsData = channelsDoc.data();
+                setChannels(channelsData.channels || ['general', 'random']);
+            } else {
+                // Create default channels document
+                await channelsRef.set({
+                    channels: ['general', 'random'],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+            setChannelsLoaded(true);
+        } catch (error) {
+            console.error('Error loading channels:', error);
+            setChannelsLoaded(true);
+        }
+    };
+
+    // Save channels to Firestore
+    const saveChannels = async (newChannels) => {
+        try {
+            const channelsRef = firestore.collection('channels').doc('main');
+            await channelsRef.set({
+                channels: newChannels,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            console.error('Error saving channels:', error);
+        }
     };
 
     
@@ -402,23 +440,8 @@ function DiscordLayout() {
                         guestCode: userData.guestCode || null
                     };
                     
-                    console.log('Calculating role for user:', userForRoleCalc, 'Available admins:', ROLE_SYSTEM.ADMINS, 'Available moderators:', ROLE_SYSTEM.MODERATORS);
-                    
-                    // Try both the stored UID and the document ID for role calculation
-                    let calculatedRole = getUserRole(userForRoleCalc);
-                    
-                    // If the stored UID doesn't match, try the document ID
-                    if (calculatedRole.name === 'User' && userData.uid && userData.uid !== doc.id) {
-                        const altUserForRoleCalc = {
-                            uid: doc.id,
-                            isAnonymous: userData.isAnonymous || false,
-                            guestCode: userData.guestCode || null
-                        };
-                        console.log('Trying alternative UID:', altUserForRoleCalc);
-                        calculatedRole = getUserRole(altUserForRoleCalc);
-                    }
-                    
-                    console.log('Final calculated role:', calculatedRole);
+                    // Calculate role information for users who don't have it stored yet
+                    const calculatedRole = getUserRole(userForRoleCalc);
                     
                     role = calculatedRole.name;
                     roleLevel = calculatedRole.level;
@@ -467,6 +490,12 @@ function DiscordLayout() {
             });
             
             console.log('Loaded users:', allUsers.length, allUsers.map(u => ({ name: u.displayName, role: u.role, roleLevel: u.roleLevel })));
+            console.log('Users by role:', {
+                admins: allUsers.filter(u => u.role === 'Admin').length,
+                moderators: allUsers.filter(u => u.role === 'Moderator').length,
+                users: allUsers.filter(u => u.role === 'User').length,
+                undefined: allUsers.filter(u => !u.role || u.role === 'undefined').length
+            });
             setMembers(allUsers);
             
             // Update users who don't have role information in the database
@@ -497,6 +526,7 @@ function DiscordLayout() {
 
     React.useEffect(() => {
         loadAllUsers();
+        loadChannels();
     }, []);
 
     // Listen for profile updates
@@ -522,9 +552,13 @@ function DiscordLayout() {
         
         try {
             // Add channel to local state
-            setChannels(prev => [...prev, channelName]);
+            const newChannels = [...channels, channelName];
+            setChannels(newChannels);
             setNewChannelName('');
             setShowCreateChannel(false);
+            
+            // Save to Firestore
+            await saveChannels(newChannels);
             
             // Switch to new channel
             setSelectedChannel(channelName);
@@ -555,7 +589,11 @@ function DiscordLayout() {
         
         try {
             // Remove channel from local state
-            setChannels(prev => prev.filter(ch => ch !== channelName));
+            const newChannels = channels.filter(ch => ch !== channelName);
+            setChannels(newChannels);
+            
+            // Save to Firestore
+            await saveChannels(newChannels);
             
             // If the deleted channel was selected, switch to general
             if (selectedChannel === channelName) {
