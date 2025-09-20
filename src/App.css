@@ -316,9 +316,10 @@ html, body {
 
 /* Message Input */
 .message-input-container {
-  padding: 16px;
+  padding: 20px;
   background-color: #36393f;
   position: relative;
+  border-top: 1px solid #2f3136;
 }
 
 .message-input-form {
@@ -327,8 +328,9 @@ html, body {
   background-color: #40444b;
   border-radius: 8px;
   padding: 0 16px;
-  min-height: 44px;
+  min-height: 60px;
   position: relative;
+  border: 1px solid #2f3136;
 }
 
 .input-wrapper {
@@ -346,8 +348,9 @@ html, body {
   line-height: 1.375;
   resize: none;
   max-height: 200px;
-  min-height: 20px;
-  padding: 10px 0;
+  min-height: 40px;
+  padding: 12px 0;
+  width: 100%;
 }
 
 .message-input::placeholder {

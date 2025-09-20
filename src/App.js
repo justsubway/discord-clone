@@ -1618,6 +1618,12 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         ...doc.data()
     })) || [];
     
+    // Debug: Log messages
+    console.log('Raw messages from Firestore:', messages.length, 'messages');
+    if (messages.length > 0) {
+        console.log('Sample message:', messages[0]);
+    }
+    
     // Debug: Check if messages have IDs (reduced logging)
     // React.useEffect(() => {
     //     if (messages && messages.length > 0) {
@@ -1876,7 +1882,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
 
         try {
             const docRef = await messagesRef.add(messageData);
-            console.log('Message sent successfully with ID:', docRef.id);
+            console.log('✅ Message sent successfully with ID:', docRef.id);
+            console.log('📝 Message data:', messageData);
             
             // Update user's last seen time
             await saveUserToFirestore(auth.currentUser, {
@@ -1885,7 +1892,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
                 guestCode: guestCode
             });
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('❌ Error sending message:', error);
         }
 
         setFormValue('');
@@ -1897,7 +1904,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const filteredMessages = React.useMemo(() => {
         if (!messages) return [];
         
-        return messages
+        const filtered = messages
             .filter(msg => {
                 // If message has channel property, filter by it
                 if (msg.channel) {
@@ -1907,6 +1914,9 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
                 return channel === 'general';
             })
             .reverse(); // Reverse to show oldest to newest (chronological order)
+        
+        console.log('Filtered messages for channel', channel, ':', filtered.length, 'messages');
+        return filtered;
     }, [messages, channel]);
 
     // console.log('Filtered messages count:', filteredMessages.length);
