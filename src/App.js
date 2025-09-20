@@ -373,28 +373,19 @@ function DiscordLayout() {
         }
     }, [selectedChannel]);
 
-    // Reset read status when new messages arrive (so indicators can appear again)
+    // Track when each channel was last visited to determine if there are new messages
+    const [channelLastVisited, setChannelLastVisited] = useState(new Map());
+    
+    // Update last visited time when switching channels
     React.useEffect(() => {
-        if (!indicatorMessages || !auth.currentUser) return;
-        
-        const currentUser = auth.currentUser;
-        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-        
-        // Check if there are new messages from other users
-        const hasNewMessages = indicatorMessages.some(msg => {
-            const messageTime = msg.createdAt?.toDate();
-            return messageTime && messageTime > tenMinutesAgo && msg.uid !== currentUser.uid;
-        });
-        
-        if (hasNewMessages) {
-            // Reset read status for channels with new activity
-            setReadChannels(prev => {
-                const newSet = new Set(prev);
-                // Only keep the currently selected channel as read
-                return new Set([selectedChannel]);
+        if (selectedChannel) {
+            setChannelLastVisited(prev => {
+                const newMap = new Map(prev);
+                newMap.set(selectedChannel, Date.now());
+                return newMap;
             });
         }
-    }, [indicatorMessages, selectedChannel, auth.currentUser]);
+    }, [selectedChannel]);
 
     // Check for mentions and unread messages
     React.useEffect(() => {
@@ -415,27 +406,31 @@ function DiscordLayout() {
             // Only process recent messages
             if (!messageTime || messageTime < tenMinutesAgo) return;
             
-            // Skip if channel has been read
-            if (readChannels.has(channel)) return;
+            // Skip if message is from current user
+            if (msg.uid === currentUserId) return;
             
-            // Check if message is unread (only if it's not from current user)
-            if (msg.uid !== currentUserId) {
+            // Check if this message is newer than when the channel was last visited
+            const lastVisited = channelLastVisited.get(channel);
+            const isNewMessage = !lastVisited || messageTime.getTime() > lastVisited;
+            
+            if (isNewMessage) {
+                // This is a new message since last visit
                 newUnreadChannels.add(channel);
-            }
-            
-            // Check for mentions (only if message contains @ and is from someone else)
-            if (msg.text && msg.text.includes('@') && msg.uid !== currentUserId) {
-                // Note: We can't use async/await in forEach, so we'll check mentions in the ChatRoom component instead
-                // This is a simplified check for now
-                const displayName = currentUser.isAnonymous 
-                    ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}`
-                    : currentUser.displayName || 'Anonymous';
-                const escapedName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const mentionPattern = new RegExp(`@${escapedName}(?!\\S)`, 'i');
-                const isMentioned = mentionPattern.test(msg.text);
                 
-                if (isMentioned) {
-                    newMentionedChannels.add(channel);
+                // Check for mentions
+                if (msg.text && msg.text.includes('@')) {
+                    // Note: We can't use async/await in forEach, so we'll check mentions in the ChatRoom component instead
+                    // This is a simplified check for now
+                    const displayName = currentUser.isAnonymous 
+                        ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}`
+                        : currentUser.displayName || 'Anonymous';
+                    const escapedName = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const mentionPattern = new RegExp(`@${escapedName}(?!\\S)`, 'i');
+                    const isMentioned = mentionPattern.test(msg.text);
+                    
+                    if (isMentioned) {
+                        newMentionedChannels.add(channel);
+                    }
                 }
             }
         });
@@ -449,7 +444,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages]);
+    }, [indicatorMessages, channelLastVisited, auth.currentUser]);
 
     // Load all users from Firestore users collection
     const loadAllUsers = async () => {
