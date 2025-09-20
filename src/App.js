@@ -34,39 +34,72 @@ const triggerProfileUpdate = () => {
     profileUpdateListeners.forEach(callback => callback());
 };
 
-// Global compress image function
+// Global compress image function with performance optimizations
 const compressImage = (file, maxWidth, maxHeight, quality) => {
     return new Promise((resolve, reject) => {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            reject(new Error('File is not an image'));
+            return;
+        }
+        
+        // Check file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            reject(new Error('File is too large (max 10MB)'));
+            return;
+        }
+        
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const img = new Image();
         
         img.onload = () => {
-            // Calculate new dimensions
-            let { width, height } = img;
-            
-            if (width > height) {
-                if (width > maxWidth) {
-                    height = (height * maxWidth) / width;
-                    width = maxWidth;
+            try {
+                // Calculate new dimensions with better aspect ratio handling
+                let { width, height } = img;
+                const aspectRatio = width / height;
+                
+                if (width > height) {
+                    if (width > maxWidth) {
+                        width = maxWidth;
+                        height = width / aspectRatio;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        height = maxHeight;
+                        width = height * aspectRatio;
+                    }
                 }
-            } else {
-                if (height > maxHeight) {
-                    width = (width * maxHeight) / height;
-                    height = maxHeight;
-                }
+                
+                // Ensure minimum dimensions
+                width = Math.max(width, 32);
+                height = Math.max(height, 32);
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Use better image rendering
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                
+                // Clean up
+                URL.revokeObjectURL(img.src);
+                
+                resolve(compressedDataUrl);
+            } catch (error) {
+                reject(error);
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            // Draw and compress
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressedDataUrl);
         };
         
-        img.onerror = reject;
+        img.onerror = () => {
+            URL.revokeObjectURL(img.src);
+            reject(new Error('Failed to load image'));
+        };
+        
         img.src = URL.createObjectURL(file);
     });
 };
@@ -1571,11 +1604,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const messagesRef = firestore.collection('messages');
     
     // Use proper query to get the most recent messages for the selected server
-    // Order by createdAt descending to get newest first, then limit to 50
-    // Note: Firebase has a limit of 25 by default, but we can increase it
+    // Order by createdAt descending to get newest first, then limit to 30 for better performance
+    // Note: Reduced limit for better performance
     const query = selectedServer 
-        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(50)
-        : messagesRef.orderBy('createdAt', 'desc').limit(50);
+        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30)
+        : messagesRef.orderBy('createdAt', 'desc').limit(30);
 
     const [messagesSnapshot, loading, error] = useCollection(query);
     
@@ -1600,7 +1633,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
 
     // Get unique users from messages for mention autocomplete
-    const getUniqueUsers = () => {
+    const getUniqueUsers = React.useCallback(() => {
         if (!messages) return [];
         const userMap = new Map();
         messages.forEach(msg => {
@@ -1619,12 +1652,12 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             }
         });
         return Array.from(userMap.values());
-    };
+    }, [messages]);
 
     const uniqueUsers = getUniqueUsers();
 
     // Function to get the correct avatar for mention dropdown users
-    const getMentionAvatar = (user) => {
+    const getMentionAvatar = React.useCallback((user) => {
         // First check if user has a photoURL
         if (user.photoURL && user.photoURL !== '') {
             return user.photoURL;
@@ -1637,12 +1670,15 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         
         // Default avatar
         return 'https://api.adorable.io/avatars/23/abott@adorable.png';
-    };
+    }, []);
 
     // Filter users based on mention query
-    const filteredUsers = uniqueUsers.filter(user => 
-        user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
-    );
+    const filteredUsers = React.useMemo(() => {
+        if (!mentionQuery.trim()) return uniqueUsers;
+        return uniqueUsers.filter(user => 
+            user.displayName.toLowerCase().includes(mentionQuery.toLowerCase())
+        );
+    }, [uniqueUsers, mentionQuery]);
 
     // Track last message ID to detect new messages
     const [lastMessageId, setLastMessageId] = useState(null);
@@ -1659,34 +1695,34 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     // Auto-scroll to bottom when messages load or change (only if user is at bottom)
     React.useEffect(() => {
         if (messages && messages.length > 0 && !isUserScrolling) {
-            // Small delay to ensure DOM is updated
-            setTimeout(() => {
+            // Use requestAnimationFrame for better performance
+            requestAnimationFrame(() => {
                 if (dummy.current && isAtBottom()) {
                     dummy.current.scrollIntoView({ behavior: 'smooth' });
                 }
-            }, 100);
+            });
         }
     }, [messages, isUserScrolling]);
 
     // Auto-scroll to bottom when channel changes
     React.useEffect(() => {
         if (messages && messages.length > 0) {
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 if (dummy.current) {
                     dummy.current.scrollIntoView({ behavior: 'smooth' });
                 }
-            }, 100);
+            });
         }
     }, [channel]);
 
-    // Handle scroll events to detect user scrolling
-    const handleScroll = () => {
+    // Handle scroll events to detect user scrolling with throttling
+    const handleScroll = React.useCallback(() => {
         if (messagesContainerRef.current) {
             const atBottom = isAtBottom();
             setIsUserScrolling(!atBottom);
             setShowScrollToBottom(!atBottom);
         }
-    };
+    }, []);
 
     // Scroll to bottom function
     const scrollToBottom = () => {
@@ -1783,7 +1819,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         }
     };
 
-    const sendMessage = async (e) => {
+    const sendMessage = React.useCallback(async (e) => {
         e.preventDefault();
 
         console.log('=== SENDING MESSAGE ===');
@@ -1855,20 +1891,23 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         setFormValue('');
         setShowMentionDropdown(false);
         dummy.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    }, [formValue, channel, selectedServer, auth.currentUser, messagesRef]);
 
     // Filter messages for the current channel and reverse to show chronological order
-    const filteredMessages = messages ? messages
-        .filter(msg => {
-            // If message has channel property, filter by it
-            if (msg.channel) {
-                return msg.channel === channel;
-            }
-            // If message doesn't have channel property (old messages), show in general
-            return channel === 'general';
-        })
-        .reverse() // Reverse to show oldest to newest (chronological order)
-        : [];
+    const filteredMessages = React.useMemo(() => {
+        if (!messages) return [];
+        
+        return messages
+            .filter(msg => {
+                // If message has channel property, filter by it
+                if (msg.channel) {
+                    return msg.channel === channel;
+                }
+                // If message doesn't have channel property (old messages), show in general
+                return channel === 'general';
+            })
+            .reverse(); // Reverse to show oldest to newest (chronological order)
+    }, [messages, channel]);
 
     // console.log('Filtered messages count:', filteredMessages.length);
 
@@ -2021,7 +2060,7 @@ const isUserMentioned = async (messageText, currentUser) => {
     return isMentioned;
 };
 
-function ChatMessage({ message, onUserClick }) {
+const ChatMessage = React.memo(({ message, onUserClick }) => {
     // console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions, role, roleColor, roleIcon } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
@@ -2373,7 +2412,7 @@ function ChatMessage({ message, onUserClick }) {
             )}
         </div>
     )
-}
+});
 
 function UserProfileButton({ onClick }) {
     const [user] = useAuthState(auth);

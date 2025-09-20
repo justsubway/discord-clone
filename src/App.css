@@ -1329,6 +1329,52 @@ html, body {
   border-radius: 50%;
 }
 
+/* Performance optimizations */
+* {
+  box-sizing: border-box;
+}
+
+.messages-container {
+  will-change: scroll-position;
+  contain: layout style paint;
+}
+
+.channel {
+  contain: layout style;
+}
+
+.message {
+  contain: layout style;
+}
+
+/* Optimize image rendering */
+img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* Reduce repaints on hover */
+.server-icon:hover,
+.channel:hover {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Optimize scrolling */
+.messages-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Reduce layout thrashing */
+.mention-dropdown {
+  contain: layout style paint;
+}
+
+.context-menu {
+  contain: layout style paint;
+}
+
 .text-sm {
   font-size: 14px;
 }
