@@ -1661,10 +1661,10 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         ...doc.data()
             }))
             .sort((a, b) => {
-                // Sort by createdAt descending (newest first)
+                // Sort by createdAt ascending (oldest first, newest last)
                 const aTime = a.createdAt?.toDate?.() || new Date(0);
                 const bTime = b.createdAt?.toDate?.() || new Date(0);
-                return bTime.getTime() - aTime.getTime();
+                return aTime.getTime() - bTime.getTime();
             });
     }, [messagesSnapshot]);
     
@@ -2769,37 +2769,6 @@ function ProfileModal({ onClose }) {
             // Save to both collections
             await profileRef.set(profileData, { merge: true });
             await userRef.set(profileData, { merge: true });
-            
-            // For guest users, ensure we preserve the guestCode and handle photoURL properly
-            const currentUserRole = getUserRole(user);
-            const updateData = {
-                displayName: userProfile.username,
-                username: userProfile.username,
-                profilePicture: userProfile.profilePicture,
-                banner: userProfile.banner,
-                role: currentUserRole.name,
-                roleLevel: currentUserRole.level,
-                roleColor: currentUserRole.color,
-                roleIcon: currentUserRole.icon,
-                lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            // Only set photoURL if there's a custom profile picture
-            if (userProfile.profilePicture && userProfile.profilePicture !== '') {
-                updateData.photoURL = userProfile.profilePicture;
-            }
-            
-            // For guest users, preserve the guestCode
-            if (user.isAnonymous) {
-                const guestCode = localStorage.getItem('guestCode');
-                if (guestCode) {
-                    updateData.guestCode = guestCode;
-                    updateData.isAnonymous = true;
-                }
-            }
-            
-            await usersRef.set(updateData, { merge: true });
             
             // Update messages with new display name
             const messagesRef = firestore.collection('messages');
