@@ -859,7 +859,7 @@ function DiscordLayout() {
     }, [indicatorMessages, auth.currentUser]);
 
     // Load all users from Firestore users collection
-    const loadAllUsers = async () => {
+    const loadAllUsers = React.useCallback(async (skipUpdates = false) => {
         try {
             const usersRef = firestore.collection('users');
             const usersSnapshot = await usersRef.get();
@@ -933,40 +933,42 @@ function DiscordLayout() {
                 return b.lastSeen.toDate() - a.lastSeen.toDate();
             });
             
-            console.log('Loaded users:', allUsers.length, 'users');
-            console.log('Users by role:', {
-                admins: allUsers.filter(u => u.role === 'Admin').length,
-                moderators: allUsers.filter(u => u.role === 'Moderator').length,
-                users: allUsers.filter(u => u.role === 'User').length,
-                undefined: allUsers.filter(u => !u.role || u.role === 'undefined').length
-            });
+            // console.log('Loaded users:', allUsers.length, 'users');
+            // console.log('Users by role:', {
+            //     admins: allUsers.filter(u => u.role === 'Admin').length,
+            //     moderators: allUsers.filter(u => u.role === 'Moderator').length,
+            //     users: allUsers.filter(u => u.role === 'User').length,
+            //     undefined: allUsers.filter(u => !u.role || u.role === 'undefined').length
+            // });
             setMembers(allUsers);
             
-            // Update users who don't have role information in the database
-            const usersToUpdate = allUsers.filter(user => {
-                const userData = usersSnapshot.docs.find(doc => doc.id === user.uniqueKey)?.data();
-                return !userData?.role;
-            });
-            
-            if (usersToUpdate.length > 0) {
-                console.log('Updating role information for', usersToUpdate.length, 'users');
-                const batch = firestore.batch();
-                usersToUpdate.forEach(user => {
-                    const userRef = firestore.collection('users').doc(user.uniqueKey);
-                    batch.update(userRef, {
-                        role: user.role,
-                        roleLevel: user.roleLevel,
-                        roleColor: user.roleColor,
-                        roleIcon: user.roleIcon,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+            // Only update users who don't have role information if not skipping updates
+            if (!skipUpdates) {
+                const usersToUpdate = allUsers.filter(user => {
+                    const userData = usersSnapshot.docs.find(doc => doc.id === user.uniqueKey)?.data();
+                    return !userData?.role;
                 });
-                await batch.commit();
+                
+                if (usersToUpdate.length > 0) {
+                    console.log('Updating role information for', usersToUpdate.length, 'users');
+                    const batch = firestore.batch();
+                    usersToUpdate.forEach(user => {
+                        const userRef = firestore.collection('users').doc(user.uniqueKey);
+                        batch.update(userRef, {
+                            role: user.role,
+                            roleLevel: user.roleLevel,
+                            roleColor: user.roleColor,
+                            roleIcon: user.roleIcon,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    });
+                    await batch.commit();
+                }
             }
         } catch (error) {
             console.error('Error loading users:', error);
         }
-    };
+    }, []);
 
     React.useEffect(() => {
         loadAllUsers();
@@ -984,9 +986,9 @@ function DiscordLayout() {
 
     // Listen for profile updates
     React.useEffect(() => {
-        const unsubscribe = addProfileUpdateListener(loadAllUsers);
+        const unsubscribe = addProfileUpdateListener(() => loadAllUsers(true));
         return unsubscribe;
-    }, []);
+    }, [loadAllUsers]);
 
     // Create new channel
     const createChannel = async () => {
@@ -1618,11 +1620,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         ...doc.data()
     })) || [];
     
-    // Debug: Log messages
-    console.log('Raw messages from Firestore:', messages.length, 'messages');
-    if (messages.length > 0) {
-        console.log('Sample message:', messages[0]);
-    }
+    // Debug: Log messages (reduced logging)
+    // console.log('Raw messages from Firestore:', messages.length, 'messages');
+    // if (messages.length > 0) {
+    //     console.log('Sample message:', messages[0]);
+    // }
     
     // Debug: Check if messages have IDs (reduced logging)
     // React.useEffect(() => {
@@ -1915,7 +1917,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             })
             .reverse(); // Reverse to show oldest to newest (chronological order)
         
-        console.log('Filtered messages for channel', channel, ':', filtered.length, 'messages');
+        // console.log('Filtered messages for channel', channel, ':', filtered.length, 'messages');
         return filtered;
     }, [messages, channel]);
 
