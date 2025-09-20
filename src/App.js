@@ -1623,8 +1623,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const dummy = useRef();
     const messagesContainerRef = useRef();
     const lastMessageCountRef = useRef(0);
-    const renderTimeoutRef = useRef(null);
     const [messagesReady, setMessagesReady] = useState(false);
+    const [stableMessages, setStableMessages] = useState([]);
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
@@ -1664,48 +1664,27 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         }));
         
         // Sort by createdAt ascending (oldest first, newest last)
-        // Use a stable sort to prevent visual jumps
-        const sortedMessages = mappedMessages.sort((a, b) => {
+        return mappedMessages.sort((a, b) => {
             const aTime = a.createdAt?.toDate?.() || new Date(0);
             const bTime = b.createdAt?.toDate?.() || new Date(0);
-            const timeDiff = aTime.getTime() - bTime.getTime();
-            
-            // If times are equal, sort by ID to ensure stable ordering
-            if (timeDiff === 0) {
-                return a.id.localeCompare(b.id);
-            }
-            
-            return timeDiff;
+            return aTime.getTime() - bTime.getTime();
         });
-        
-        // Log the sorted order for debugging
-        console.log('📝 SORTED MESSAGES:', sortedMessages.map(m => ({ 
-            id: m.id, 
-            text: m.text?.substring(0, 20), 
-            time: m.createdAt?.toDate?.()?.toISOString(),
-            timestamp: m.createdAt?.toDate?.()?.getTime()
-        })));
-        
-        return sortedMessages;
     }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
     console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
     
-    // Check if message count has changed to prevent unnecessary re-renders
-    if (messages.length !== lastMessageCountRef.current) {
-        console.log('📊 MESSAGE COUNT CHANGED:', lastMessageCountRef.current, '->', messages.length);
-        lastMessageCountRef.current = messages.length;
-        
-        // Delay showing messages to ensure they're properly sorted
-        setMessagesReady(false);
-        if (renderTimeoutRef.current) {
-            clearTimeout(renderTimeoutRef.current);
-        }
-        renderTimeoutRef.current = setTimeout(() => {
+    // Update stable messages only when there's a real change
+    React.useEffect(() => {
+        if (messages.length !== lastMessageCountRef.current) {
+            console.log('📊 MESSAGE COUNT CHANGED:', lastMessageCountRef.current, '->', messages.length);
+            lastMessageCountRef.current = messages.length;
+            
+            // Update stable messages immediately
+            setStableMessages([...messages]);
             setMessagesReady(true);
-        }, 50); // Small delay to ensure sorting is complete
-    }
+        }
+    }, [messages]);
     
     if (messages.length > 0) {
         console.log('📝 Message order check:', messages.map(m => ({ 
@@ -1719,14 +1698,6 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         console.log('❌ NO MESSAGES FOUND - This is the problem!');
     }
     
-    // Cleanup timeout on unmount
-    React.useEffect(() => {
-        return () => {
-            if (renderTimeoutRef.current) {
-                clearTimeout(renderTimeoutRef.current);
-            }
-        };
-    }, []);
     const [formValue, setFormValue] = useState('');
     const messagesRef = firestore.collection('messages');
 
@@ -1999,11 +1970,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, [formValue, channel, selectedServer, auth.currentUser, messagesRef]);
 
-    // Filter messages for the current channel
+    // Filter messages for the current channel using stable messages
     const filteredMessages = React.useMemo(() => {
-        if (!messages) return [];
+        if (!stableMessages || stableMessages.length === 0) return [];
         
-        const filtered = messages
+        const filtered = stableMessages
         .filter(msg => {
             // If message has channel property, filter by it
             if (msg.channel) {
@@ -2020,17 +1991,15 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             console.log('❌ NO FILTERED MESSAGES - Check channel filtering logic!');
         }
         
-        // Messages are already sorted oldest first (newest last) from the main messages useMemo
-        // No need to reverse - they should appear in chronological order
         return filtered;
-    }, [messages, channel]);
+    }, [stableMessages, channel]);
 
     // console.log('Filtered messages count:', filteredMessages.length);
 
     // Debug: Log what we're about to render
     console.log('🎨 RENDERING - About to render', filteredMessages.length, 'messages');
 
-    // Memoize the message list to prevent unnecessary re-renders
+    // Simple message list rendering
     const messageList = React.useMemo(() => {
         if (filteredMessages.length === 0) {
             return (
@@ -2041,17 +2010,8 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             );
         }
         
-        // Only render messages when they're ready to prevent visual jumps
-        if (!messagesReady) {
-            return (
-                <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
-                    <p>Loading messages...</p>
-                </div>
-            );
-        }
-        
         return filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />);
-    }, [filteredMessages, channel, onUserClick, messagesReady]);
+    }, [filteredMessages, channel, onUserClick]);
 
     return (
         <>
