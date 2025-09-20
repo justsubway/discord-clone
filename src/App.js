@@ -1661,17 +1661,30 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         }));
         
         // Sort by createdAt ascending (oldest first, newest last)
+        // Use a stable sort to prevent visual jumps
         return mappedMessages.sort((a, b) => {
             const aTime = a.createdAt?.toDate?.() || new Date(0);
             const bTime = b.createdAt?.toDate?.() || new Date(0);
-            return aTime.getTime() - bTime.getTime();
+            const timeDiff = aTime.getTime() - bTime.getTime();
+            
+            // If times are equal, sort by ID to ensure stable ordering
+            if (timeDiff === 0) {
+                return a.id.localeCompare(b.id);
+            }
+            
+            return timeDiff;
         });
     }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
     console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name, 'Messages:', messages.length);
     if (messages.length > 0) {
-        console.log('📝 Message order check:', messages.map(m => ({ id: m.id, text: m.text?.substring(0, 20), time: m.createdAt?.toDate?.()?.toISOString() })));
+        console.log('📝 Message order check:', messages.map(m => ({ 
+            id: m.id, 
+            text: m.text?.substring(0, 20), 
+            time: m.createdAt?.toDate?.()?.toISOString(),
+            timestamp: m.createdAt?.toDate?.()?.getTime()
+        })));
     }
     if (messages.length === 0) {
         console.log('❌ NO MESSAGES FOUND - This is the problem!');
@@ -1955,7 +1968,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         dummy.current.scrollIntoView({ behavior: 'smooth' });
     }, [formValue, channel, selectedServer, auth.currentUser, messagesRef]);
 
-    // Filter messages for the current channel and reverse to show chronological order
+    // Filter messages for the current channel
     const filteredMessages = React.useMemo(() => {
         if (!messages) return [];
         
@@ -1967,8 +1980,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             }
             // If message doesn't have channel property (old messages), show in general
             return channel === 'general';
-            });
-            // Don't reverse here - messages are already sorted newest first from the useMemo
+        });
         
         console.log('🔍 FILTERED MESSAGES - Channel:', channel, 'Count:', filtered.length);
         if (filtered.length > 0) {
@@ -1976,6 +1988,9 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         } else {
             console.log('❌ NO FILTERED MESSAGES - Check channel filtering logic!');
         }
+        
+        // Messages are already sorted oldest first (newest last) from the main messages useMemo
+        // No need to reverse - they should appear in chronological order
         return filtered;
     }, [messages, channel]);
 
