@@ -1624,6 +1624,7 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     const messagesContainerRef = useRef();
     const lastMessageCountRef = useRef(0);
     const renderTimeoutRef = useRef(null);
+    const [messagesReady, setMessagesReady] = useState(false);
     
     // Create a stable query that doesn't change unless server actually changes
     const query = React.useMemo(() => {
@@ -1695,6 +1696,15 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
     if (messages.length !== lastMessageCountRef.current) {
         console.log('📊 MESSAGE COUNT CHANGED:', lastMessageCountRef.current, '->', messages.length);
         lastMessageCountRef.current = messages.length;
+        
+        // Delay showing messages to ensure they're properly sorted
+        setMessagesReady(false);
+        if (renderTimeoutRef.current) {
+            clearTimeout(renderTimeoutRef.current);
+        }
+        renderTimeoutRef.current = setTimeout(() => {
+            setMessagesReady(true);
+        }, 50); // Small delay to ensure sorting is complete
     }
     
     if (messages.length > 0) {
@@ -1709,12 +1719,14 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         console.log('❌ NO MESSAGES FOUND - This is the problem!');
     }
     
-    // Debug: Check if messages have IDs (reduced logging)
-    // React.useEffect(() => {
-    //     if (messages && messages.length > 0) {
-    //         console.log('🔍 Message IDs check:', messages.length, 'messages loaded');
-    //     }
-    // }, [messages]);
+    // Cleanup timeout on unmount
+    React.useEffect(() => {
+        return () => {
+            if (renderTimeoutRef.current) {
+                clearTimeout(renderTimeoutRef.current);
+            }
+        };
+    }, []);
     const [formValue, setFormValue] = useState('');
     const messagesRef = firestore.collection('messages');
 
@@ -2029,8 +2041,17 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             );
         }
         
+        // Only render messages when they're ready to prevent visual jumps
+        if (!messagesReady) {
+            return (
+                <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
+                    <p>Loading messages...</p>
+                </div>
+            );
+        }
+        
         return filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />);
-    }, [filteredMessages, channel, onUserClick]);
+    }, [filteredMessages, channel, onUserClick, messagesReady]);
 
     return (
         <>
