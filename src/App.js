@@ -259,18 +259,15 @@ function SignIn() {
 }
 
 function DiscordLayout() {
-    const [selectedChannel, setSelectedChannel] = useState('general');
+    const [selectedChannel, setSelectedChannel] = useState(null);
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
-    const [readChannels, setReadChannels] = useState(new Set(['general'])); // Start with general as read
+    const [readChannels, setReadChannels] = useState(new Set()); // Start with no read channels
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
       const [members, setMembers] = useState([]);
-      const [channels, setChannels] = useState([
-        { name: 'general', category: 'General' },
-        { name: 'random', category: 'General' }
-      ]); // Default channels with categories
+      const [channels, setChannels] = useState([]); // Start with no channels
       const [channelsLoaded, setChannelsLoaded] = useState(false);
       const [showCreateChannel, setShowCreateChannel] = useState(false);
       const [newChannelName, setNewChannelName] = useState('');
@@ -303,25 +300,18 @@ function DiscordLayout() {
             
             if (channelsDoc.exists) {
                 const channelsData = channelsDoc.data();
-                setChannels(channelsData.channels || [
-                    { name: 'general', category: 'General' },
-                    { name: 'random', category: 'General' }
-                ]);
+                setChannels(channelsData.channels || []);
                 setCategories(channelsData.categories || ['General', 'Gaming', 'Music', 'Art']);
             } else {
-                // Create default channels document
-                const defaultChannels = [
-                    { name: 'general', category: 'General' },
-                    { name: 'random', category: 'General' }
-                ];
+                // Create empty channels document
                 const defaultCategories = ['General', 'Gaming', 'Music', 'Art'];
                 await channelsRef.set({
-                    channels: defaultChannels,
+                    channels: [],
                     categories: defaultCategories,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                setChannels(defaultChannels);
+                setChannels([]);
                 setCategories(defaultCategories);
             }
             setChannelsLoaded(true);
@@ -610,10 +600,7 @@ function DiscordLayout() {
             return;
         }
         
-        if (['general', 'random'].includes(channelName)) {
-            alert('Cannot delete default channels');
-            return;
-        }
+        // No default channels to protect
         
         if (!window.confirm(`Are you sure you want to delete #${channelName}? This action cannot be undone.`)) {
             return;
@@ -627,9 +614,9 @@ function DiscordLayout() {
             // Save to Firestore
             await saveChannels(newChannels);
             
-            // If the deleted channel was selected, switch to general
+            // If the deleted channel was selected, clear selection
             if (selectedChannel === channelName) {
-                setSelectedChannel('general');
+                setSelectedChannel(null);
             }
             
             // Remove from read channels
@@ -745,51 +732,62 @@ function DiscordLayout() {
                 </div>
                 
                 <div className="channel-categories">
-                    {/* Render channels grouped by category */}
-                    {categories.map(category => {
-                        const categoryChannels = channels.filter(ch => ch.category === category);
-                        if (categoryChannels.length === 0) return null;
-                        
-                        return (
-                            <div key={category} className="category">
-                                <div className="category-header">
-                                    <span className="category-name">{category}</span>
-                                    <span className="category-count">{categoryChannels.length}</span>
-                                </div>
-                                <div className="channel-list">
-                                    {categoryChannels.map(channel => (
-                                        <div 
-                                            key={channel.name}
-                                            className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
-                                            onClick={() => setSelectedChannel(channel.name)}
-                                        >
-                                            <span className="channel-icon">#</span>
-                                            <span className="channel-name">{channel.name}</span>
-                                            {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
-                                                <span className="mention-indicator">@</span>
-                                            )}
-                                            {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
-                                                <span className="unread-indicator"></span>
-                                            )}
-                                            {/* Delete Channel Button - Only for Admins and not for default channels */}
-                                            {hasPermission(auth.currentUser, 'delete_channels') && !['general', 'random'].includes(channel.name) && (
-                                                <button 
-                                                    className="delete-channel-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        deleteChannel(channel.name);
-                                                    }}
-                                                    title="Delete Channel"
-                                                >
-                                                    ×
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
+                    {/* Empty state when no channels exist */}
+                    {channels.length === 0 ? (
+                        <div className="empty-channels-state">
+                            <div className="empty-channels-icon">💬</div>
+                            <div className="empty-channels-title">No channels yet</div>
+                            <div className="empty-channels-description">
+                                Create your first channel to get started!
                             </div>
-                        );
-                    })}
+                        </div>
+                    ) : (
+                        /* Render channels grouped by category */
+                        categories.map(category => {
+                            const categoryChannels = channels.filter(ch => ch.category === category);
+                            if (categoryChannels.length === 0) return null;
+                            
+                            return (
+                                <div key={category} className="category">
+                                    <div className="category-header">
+                                        <span className="category-name">{category}</span>
+                                        <span className="category-count">{categoryChannels.length}</span>
+                                    </div>
+                                    <div className="channel-list">
+                                        {categoryChannels.map(channel => (
+                                            <div 
+                                                key={channel.name}
+                                                className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
+                                                onClick={() => setSelectedChannel(channel.name)}
+                                            >
+                                                <span className="channel-icon">#</span>
+                                                <span className="channel-name">{channel.name}</span>
+                                                {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
+                                                    <span className="mention-indicator">@</span>
+                                                )}
+                                                {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
+                                                    <span className="unread-indicator"></span>
+                                                )}
+                                                {/* Delete Channel Button - Only for Admins */}
+                                                {hasPermission(auth.currentUser, 'delete_channels') && (
+                                                    <button 
+                                                        className="delete-channel-btn"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteChannel(channel.name);
+                                                        }}
+                                                        title="Delete Channel"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                     
                     {/* Create Channel Button - Only for moderators/admins */}
                     {hasPermission(auth.currentUser, 'create_channels') && (
@@ -904,19 +902,31 @@ function DiscordLayout() {
 
             {/* Main Content */}
             <div className="main-content">
-                <div className="chat-header">
-                    <span className="channel-name">#{selectedChannel}</span>
-                    <span className="channel-description">General discussion</span>
-                </div>
-                
-                <ChatRoom 
-                    channel={selectedChannel} 
-                    onUserClick={(user, event) => {
-                        const rect = event.target.getBoundingClientRect();
-                        setPreviewPosition({ x: rect.right + 10, y: rect.top });
-                        setShowUserPreview(user);
-                    }}
-                />
+                {selectedChannel ? (
+                    <>
+                        <div className="chat-header">
+                            <span className="channel-name">#{selectedChannel}</span>
+                            <span className="channel-description">General discussion</span>
+                        </div>
+                        
+                        <ChatRoom 
+                            channel={selectedChannel} 
+                            onUserClick={(user, event) => {
+                                const rect = event.target.getBoundingClientRect();
+                                setPreviewPosition({ x: rect.right + 10, y: rect.top });
+                                setShowUserPreview(user);
+                            }}
+                        />
+                    </>
+                ) : (
+                    <div className="no-channel-selected">
+                        <div className="no-channel-selected-icon">💬</div>
+                        <div className="no-channel-selected-title">Welcome to SuperChat!</div>
+                        <div className="no-channel-selected-description">
+                            Select a channel from the sidebar to start chatting, or create a new channel to get started.
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Members Sidebar */}

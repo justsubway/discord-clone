@@ -2030,3 +2030,61 @@ html, body {
 .create-category-cancel:hover {
   background: #5d6269;
 }
+
+/* Empty Channels State */
+.empty-channels-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: #8e9297;
+}
+
+.empty-channels-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.empty-channels-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #dcddde;
+  margin-bottom: 8px;
+}
+
+.empty-channels-description {
+  font-size: 14px;
+  color: #8e9297;
+  line-height: 1.4;
+}
+
+/* No Channel Selected State */
+.no-channel-selected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #8e9297;
+  padding: 40px;
+}
+
+.no-channel-selected-icon {
+  font-size: 64px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+}
+
+.no-channel-selected-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #dcddde;
+  margin-bottom: 12px;
+}
+
+.no-channel-selected-description {
+  font-size: 16px;
+  color: #8e9297;
+  line-height: 1.5;
+  max-width: 400px;
+}
