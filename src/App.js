@@ -1664,11 +1664,20 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         }));
         
         // Sort by createdAt ascending (oldest first, newest last)
-        return mappedMessages.sort((a, b) => {
+        const sorted = mappedMessages.sort((a, b) => {
             const aTime = a.createdAt?.toDate?.() || new Date(0);
             const bTime = b.createdAt?.toDate?.() || new Date(0);
             return aTime.getTime() - bTime.getTime();
         });
+        
+        // Debug: Log the sorted order
+        console.log('📝 SORTED MESSAGES:', sorted.map(m => ({ 
+            id: m.id, 
+            text: m.text?.substring(0, 20), 
+            time: m.createdAt?.toDate?.()?.toISOString()
+        })));
+        
+        return sorted;
     }, [messagesSnapshot]);
     
     // Debug: Log messages with comprehensive debugging
@@ -1681,6 +1690,11 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             lastMessageCountRef.current = messages.length;
             
             // Update stable messages immediately
+            console.log('🔄 UPDATING STABLE MESSAGES:', messages.map(m => ({ 
+                id: m.id, 
+                text: m.text?.substring(0, 20), 
+                time: m.createdAt?.toDate?.()?.toISOString()
+            })));
             setStableMessages([...messages]);
             setMessagesReady(true);
         }
