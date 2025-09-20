@@ -548,18 +548,27 @@ function ChatRoom({ channel, onUserClick }) {
 
     // Track last message ID to detect new messages
     const [lastMessageId, setLastMessageId] = useState(null);
+    const [isUserScrolling, setIsUserScrolling] = useState(false);
+    const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-    // Auto-scroll to bottom when messages load or change
+    // Check if user is at bottom of scroll
+    const isAtBottom = () => {
+        if (!messagesContainerRef.current) return true;
+        const container = messagesContainerRef.current;
+        return container.scrollTop + container.clientHeight >= container.scrollHeight - 10;
+    };
+
+    // Auto-scroll to bottom when messages load or change (only if user is at bottom)
     React.useEffect(() => {
-        if (messages && messages.length > 0) {
+        if (messages && messages.length > 0 && !isUserScrolling) {
             // Small delay to ensure DOM is updated
             setTimeout(() => {
-                if (dummy.current) {
+                if (dummy.current && isAtBottom()) {
                     dummy.current.scrollIntoView({ behavior: 'smooth' });
                 }
             }, 100);
         }
-    }, [messages]);
+    }, [messages, isUserScrolling]);
 
     // Auto-scroll to bottom when channel changes
     React.useEffect(() => {
@@ -571,6 +580,24 @@ function ChatRoom({ channel, onUserClick }) {
             }, 100);
         }
     }, [channel]);
+
+    // Handle scroll events to detect user scrolling
+    const handleScroll = () => {
+        if (messagesContainerRef.current) {
+            const atBottom = isAtBottom();
+            setIsUserScrolling(!atBottom);
+            setShowScrollToBottom(!atBottom);
+        }
+    };
+
+    // Scroll to bottom function
+    const scrollToBottom = () => {
+        if (dummy.current) {
+            dummy.current.scrollIntoView({ behavior: 'smooth' });
+            setIsUserScrolling(false);
+            setShowScrollToBottom(false);
+        }
+    };
 
     // Check for new mentions and play sound immediately
     React.useEffect(() => {
@@ -719,7 +746,7 @@ function ChatRoom({ channel, onUserClick }) {
 
     return (
         <>
-            <div className="messages-container" ref={messagesContainerRef}>
+            <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
                 {filteredMessages.length > 0 ? (
                     filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
                 ) : (
@@ -730,6 +757,17 @@ function ChatRoom({ channel, onUserClick }) {
                 )}
             <span ref={dummy}></span>
             </div>
+
+            {/* Scroll to Bottom Button */}
+            {showScrollToBottom && (
+                <button 
+                    className="scroll-to-bottom-btn"
+                    onClick={scrollToBottom}
+                    title="Scroll to bottom"
+                >
+                    ↓
+                </button>
+            )}
 
             <div className="message-input-container">
                 <form className="message-input-form" onSubmit={sendMessage}>
