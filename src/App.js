@@ -320,6 +320,7 @@ function DiscordLayout() {
     const [newServerName, setNewServerName] = useState('');
     const [newServerDescription, setNewServerDescription] = useState('');
     const [showServerContextMenu, setShowServerContextMenu] = useState(null);
+    const [selectedServerId, setSelectedServerId] = useState(null);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
     const [draggedChannel, setDraggedChannel] = useState(null);
     const [editingChannel, setEditingChannel] = useState(null);
@@ -710,16 +711,12 @@ function DiscordLayout() {
     }, [selectedChannel]);
 
     // Track when each channel was last visited to determine if there are new messages
-    const [channelLastVisited, setChannelLastVisited] = useState(new Map());
+    const channelLastVisitedRef = useRef(new Map());
     
     // Update last visited time when switching channels
     React.useEffect(() => {
         if (selectedChannel) {
-            setChannelLastVisited(prev => {
-                const newMap = new Map(prev);
-                newMap.set(selectedChannel, Date.now());
-                return newMap;
-            });
+            channelLastVisitedRef.current.set(selectedChannel, Date.now());
         }
     }, [selectedChannel]);
 
@@ -746,7 +743,7 @@ function DiscordLayout() {
             if (msg.uid === currentUserId) return;
             
             // Check if this message is newer than when the channel was last visited
-            const lastVisited = channelLastVisited.get(channel);
+            const lastVisited = channelLastVisitedRef.current.get(channel);
             const isNewMessage = !lastVisited || messageTime.getTime() > lastVisited;
             
             if (isNewMessage) {
@@ -780,7 +777,7 @@ function DiscordLayout() {
         
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
-    }, [indicatorMessages, channelLastVisited, auth.currentUser]);
+    }, [indicatorMessages, auth.currentUser]);
 
     // Load all users from Firestore users collection
     const loadAllUsers = async () => {
@@ -1086,7 +1083,8 @@ function DiscordLayout() {
                         onContextMenu={(e) => {
                             e.preventDefault();
                             setContextMenuPosition({ x: e.clientX, y: e.clientY });
-                            setShowServerContextMenu(server.id);
+                            setSelectedServerId(server.id);
+                            setShowServerContextMenu(true);
                         }}
                         title={server.name}
                     >
@@ -1124,17 +1122,17 @@ function DiscordLayout() {
                         top: contextMenuPosition.y,
                         zIndex: 1000
                     }}
-                    onMouseLeave={() => setShowServerContextMenu(null)}
+                    onMouseLeave={() => setShowServerContextMenu(false)}
                 >
                     <div className="context-menu-item" onClick={() => {
-                        setShowServerContextMenu(null);
+                        setShowServerContextMenu(false);
                         setShowServerIconModal(true);
                     }}>
                         Change Icon
                     </div>
                     <div className="context-menu-item danger" onClick={() => {
-                        setShowServerContextMenu(null);
-                        deleteServer(showServerContextMenu);
+                        setShowServerContextMenu(false);
+                        deleteServer(selectedServerId);
                     }}>
                         Delete Server
                     </div>
@@ -1551,7 +1549,7 @@ function DiscordLayout() {
             {showServerIconModal && (
                 <ServerIconModal 
                     onClose={() => setShowServerIconModal(false)}
-                    onIconChange={(icon) => handleServerIconChange(showServerContextMenu, icon)}
+                    onIconChange={(icon) => handleServerIconChange(selectedServerId, icon)}
                     serverIcon={newServerIcon}
                     setServerIcon={setNewServerIcon}
                 />
@@ -2375,7 +2373,7 @@ function UserProfileButton({ onClick }) {
     const [userProfile, setUserProfile] = useState(null);
     
     // Get user profile data
-    const getUserProfile = async () => {
+    const getUserProfile = React.useCallback(async () => {
         if (!user) return;
         
         try {
@@ -2408,7 +2406,7 @@ function UserProfileButton({ onClick }) {
         } catch (error) {
             console.error('Error getting user profile:', error);
         }
-    };
+    }, [user]);
 
     React.useEffect(() => {
         getUserProfile();
