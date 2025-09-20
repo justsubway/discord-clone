@@ -60,7 +60,8 @@ html, body {
 }
 
 .server-icon.active {
-  background-color: #5865f2;
+  background-color: #36393f;
+  border: 2px solid #5865f2;
   border-radius: 16px;
 }
 
