@@ -1665,8 +1665,25 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         
         // Sort by createdAt ascending (oldest first, newest last)
         const sorted = mappedMessages.sort((a, b) => {
-            const aTime = a.createdAt?.toDate?.() || new Date(0);
-            const bTime = b.createdAt?.toDate?.() || new Date(0);
+            // Handle both Firestore Timestamp objects and regular dates
+            let aTime, bTime;
+            
+            if (a.createdAt && typeof a.createdAt.toDate === 'function') {
+                aTime = a.createdAt.toDate();
+            } else if (a.createdAt instanceof Date) {
+                aTime = a.createdAt;
+            } else {
+                aTime = new Date(0);
+            }
+            
+            if (b.createdAt && typeof b.createdAt.toDate === 'function') {
+                bTime = b.createdAt.toDate();
+            } else if (b.createdAt instanceof Date) {
+                bTime = b.createdAt;
+            } else {
+                bTime = new Date(0);
+            }
+            
             const timeDiff = aTime.getTime() - bTime.getTime();
             
             // Debug: Log individual timestamps
