@@ -34,6 +34,43 @@ const triggerProfileUpdate = () => {
     profileUpdateListeners.forEach(callback => callback());
 };
 
+// Global compress image function
+const compressImage = (file, maxWidth, maxHeight, quality) => {
+    return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        img.onload = () => {
+            // Calculate new dimensions
+            let { width, height } = img;
+            
+            if (width > height) {
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width = (width * maxHeight) / height;
+                    height = maxHeight;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Draw and compress
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedDataUrl);
+        };
+        
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+    });
+};
+
 // Role system - Secure role assignment based on Firebase UID
 const ROLE_SYSTEM = {
     // Admin UIDs - Add your Firebase UIDs here for admin access
@@ -585,42 +622,6 @@ function DiscordLayout() {
         }
     };
 
-    // Compress image function
-    const compressImage = (file, maxWidth, maxHeight, quality) => {
-        return new Promise((resolve, reject) => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = new Image();
-            
-            img.onload = () => {
-                // Calculate new dimensions
-                let { width, height } = img;
-                
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height = (height * maxWidth) / width;
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width = (width * maxHeight) / height;
-                        height = maxHeight;
-                    }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                // Draw and compress
-                ctx.drawImage(img, 0, 0, width, height);
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-                resolve(compressedDataUrl);
-            };
-            
-            img.onerror = reject;
-            img.src = URL.createObjectURL(file);
-        });
-    };
 
     // Handle server icon change
     const handleServerIconChange = async (serverId, newIcon) => {
