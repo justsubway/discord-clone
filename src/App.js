@@ -25,9 +25,16 @@ const storage = firebase.storage();
 // Function to save/update user in Firestore
 const saveUserToFirestore = async (user, additionalData = {}) => {
     try {
-        const userRef = firestore.collection('users').doc(user.uid);
+        // Create unique document ID for guest users
+        let documentId = user.uid;
+        if (user.isAnonymous && additionalData.guestCode) {
+            documentId = `guest_${additionalData.guestCode}`;
+        }
+        
+        const userRef = firestore.collection('users').doc(documentId);
         const userData = {
             uid: user.uid,
+            documentId: documentId, // Store the document ID for reference
             displayName: user.displayName || additionalData.displayName || 'User',
             photoURL: user.photoURL || additionalData.photoURL || '',
             email: user.email || '',
@@ -38,7 +45,7 @@ const saveUserToFirestore = async (user, additionalData = {}) => {
         };
         
         await userRef.set(userData, { merge: true });
-        console.log('User saved to Firestore:', user.uid);
+        console.log('User saved to Firestore:', documentId);
     } catch (error) {
         console.error('Error saving user to Firestore:', error);
     }
@@ -337,8 +344,12 @@ function DiscordLayout() {
         const memberMap = new Map();
         indicatorMessages.forEach(msg => {
             if (msg.uid && msg.displayName) {
-                memberMap.set(msg.uid, {
+                // Create unique key for guest users using guest code
+                const uniqueKey = msg.guestCode ? `guest_${msg.guestCode}` : msg.uid;
+                
+                memberMap.set(uniqueKey, {
                     uid: msg.uid,
+                    uniqueKey: uniqueKey, // Store the unique key for reference
                     displayName: msg.displayName,
                     photoURL: msg.photoURL,
                     guestCode: msg.guestCode,
@@ -350,12 +361,13 @@ function DiscordLayout() {
         // Merge with existing members, prioritizing stored users
         setMembers(prev => {
             const newMembers = Array.from(memberMap.values());
-            const existingMap = new Map(prev.map(member => [member.uid, member]));
+            const existingMap = new Map(prev.map(member => [member.uniqueKey || member.uid, member]));
             
             // Add new members that aren't already in the list
             newMembers.forEach(member => {
-                if (!existingMap.has(member.uid)) {
-                    existingMap.set(member.uid, member);
+                const key = member.uniqueKey || member.uid;
+                if (!existingMap.has(key)) {
+                    existingMap.set(key, member);
                 }
             });
             
@@ -451,7 +463,7 @@ function DiscordLayout() {
                 <div className="members-list">
                     {members.map(member => (
                         <div 
-                            key={member.uid}
+                            key={member.uniqueKey || member.uid}
                             className="member-item"
                             onClick={(e) => {
                                 const rect = e.target.getBoundingClientRect();
@@ -1236,7 +1248,16 @@ function UserProfileButton({ onClick }) {
         
         const getUserProfile = async () => {
             try {
-                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                // Create unique document ID for guest users
+                let documentId = user.uid;
+                if (user.isAnonymous) {
+                    const guestCode = localStorage.getItem('guestCode');
+                    if (guestCode) {
+                        documentId = `guest_${guestCode}`;
+                    }
+                }
+                
+                const profileRef = firestore.collection('userProfiles').doc(documentId);
                 const profileDoc = await profileRef.get();
                 
                 if (profileDoc.exists) {
@@ -1244,7 +1265,7 @@ function UserProfileButton({ onClick }) {
                 } else {
                     // Create default profile
                     const defaultProfile = {
-                        username: user.displayName || 'User',
+                        username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : 'User'),
                         aboutMe: '',
                         profilePicture: user.photoURL || '',
                         banner: '',
@@ -1328,13 +1349,22 @@ function ProfileModal({ onClose }) {
         
         const loadUserProfile = async () => {
             try {
-                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                // Create unique document ID for guest users
+                let documentId = user.uid;
+                if (user.isAnonymous) {
+                    const guestCode = localStorage.getItem('guestCode');
+                    if (guestCode) {
+                        documentId = `guest_${guestCode}`;
+                    }
+                }
+                
+                const profileRef = firestore.collection('userProfiles').doc(documentId);
                 const profileDoc = await profileRef.get();
                 
                 if (profileDoc.exists) {
                     const data = profileDoc.data();
                     setUserProfile({
-                        username: data.username || user.displayName || '',
+                        username: data.username || user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : ''),
                         aboutMe: data.aboutMe || '',
                         profilePicture: data.profilePicture || user.photoURL || '',
                         banner: data.banner || ''
@@ -1342,7 +1372,7 @@ function ProfileModal({ onClose }) {
                 } else {
                     // Set default values
                     setUserProfile({
-                        username: user.displayName || '',
+                        username: user.displayName || (user.isAnonymous ? `Guest ${localStorage.getItem('guestCode') || 'XXXX'}` : ''),
                         aboutMe: '',
                         profilePicture: user.photoURL || '',
                         banner: ''
@@ -1410,7 +1440,16 @@ function ProfileModal({ onClose }) {
         
         setSaving(true);
         try {
-            const profileRef = firestore.collection('userProfiles').doc(user.uid);
+            // Create unique document ID for guest users
+            let documentId = user.uid;
+            if (user.isAnonymous) {
+                const guestCode = localStorage.getItem('guestCode');
+                if (guestCode) {
+                    documentId = `guest_${guestCode}`;
+                }
+            }
+            
+            const profileRef = firestore.collection('userProfiles').doc(documentId);
             await profileRef.set({
                 username: userProfile.username,
                 aboutMe: userProfile.aboutMe,
@@ -1618,7 +1657,13 @@ function UserPreviewModal({ user, position, onClose }) {
         
         const loadUserProfile = async () => {
             try {
-                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                // Create unique document ID for guest users
+                let documentId = user.uid;
+                if (user.isAnonymous && user.guestCode) {
+                    documentId = `guest_${user.guestCode}`;
+                }
+                
+                const profileRef = firestore.collection('userProfiles').doc(documentId);
                 const profileDoc = await profileRef.get();
                 
                 if (profileDoc.exists) {
