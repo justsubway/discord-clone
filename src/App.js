@@ -388,7 +388,7 @@ function DiscordLayout() {
                 
                 // Get role information from database or calculate it
                 let role, roleLevel, roleColor, roleIcon;
-                if (userData.role) {
+                if (userData.role && userData.role !== 'undefined') {
                     // Use role information from database
                     role = userData.role;
                     roleLevel = userData.roleLevel || 0;
@@ -405,6 +405,14 @@ function DiscordLayout() {
                     roleLevel = calculatedRole.level;
                     roleColor = calculatedRole.color;
                     roleIcon = calculatedRole.icon;
+                }
+                
+                // Ensure we always have valid role information
+                if (!role || role === 'undefined') {
+                    role = 'User';
+                    roleLevel = 0;
+                    roleColor = '#8e9297';
+                    roleIcon = '👤';
                 }
                 
                 allUsers.push({
@@ -439,6 +447,7 @@ function DiscordLayout() {
                 return b.lastSeen.toDate() - a.lastSeen.toDate();
             });
             
+            console.log('Loaded users:', allUsers.length, allUsers.map(u => ({ name: u.displayName, role: u.role, roleLevel: u.roleLevel })));
             setMembers(allUsers);
             
             // Update users who don't have role information in the database
@@ -738,6 +747,9 @@ function DiscordLayout() {
                     <span>Online — {members.length}</span>
                 </div>
                 <div className="members-list">
+                    {/* Debug info */}
+                    {console.log('Members for rendering:', members.length, members.map(m => ({ name: m.displayName, role: m.role })))}
+                    
                     {/* Admins Section */}
                     {members.filter(member => member.role === 'Admin').length > 0 && (
                         <div className="role-section">
@@ -853,6 +865,50 @@ function DiscordLayout() {
                                                 >
                                                     {member.displayName}
                                                 </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Fallback Section for users with undefined roles */}
+                    {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).length > 0 && (
+                        <div className="role-section">
+                            <div className="role-section-header">
+                                <span>Other — {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).length}</span>
+                            </div>
+                            <div className="role-section-list">
+                                {members.filter(member => !member.role || member.role === 'undefined' || (member.role !== 'Admin' && member.role !== 'Moderator' && member.role !== 'User')).map(member => {
+                                    const role = { name: member.role || 'User', color: member.roleColor || '#8e9297', icon: member.roleIcon || '👤' };
+                                    return (
+                                        <div 
+                                            key={member.uniqueKey || member.uid}
+                                            className={`member-item ${role.name.toLowerCase()}`}
+                                            onClick={(e) => {
+                                                const rect = e.target.getBoundingClientRect();
+                                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                                setShowUserPreview(member);
+                                            }}
+                                        >
+                                            <img 
+                                                className="member-avatar"
+                                                src={getMemberAvatar(member)}
+                                                alt={member.displayName}
+                                            />
+                                            <div className="member-info">
+                                                <span 
+                                                    className={`member-name ${member.isAnonymous ? 'guest' : ''}`}
+                                                    style={{ color: role.color }}
+                                                >
+                                                    {member.displayName}
+                                                </span>
+                                                {role.name !== 'User' && (
+                                                    <span className="member-role" style={{ color: role.color }}>
+                                                        {role.icon} {role.name}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     );
