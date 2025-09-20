@@ -322,6 +322,9 @@ function DiscordLayout() {
     const [showServerContextMenu, setShowServerContextMenu] = useState(null);
     const [selectedServerId, setSelectedServerId] = useState(null);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    const [showChannelContextMenu, setShowChannelContextMenu] = useState(false);
+    const [selectedChannelName, setSelectedChannelName] = useState(null);
+    const [channelContextPosition, setChannelContextPosition] = useState({ x: 0, y: 0 });
     const [draggedChannel, setDraggedChannel] = useState(null);
     const [editingChannel, setEditingChannel] = useState(null);
     const [editingChannelName, setEditingChannelName] = useState('');
@@ -620,6 +623,49 @@ function DiscordLayout() {
         } catch (error) {
             console.error('Error renaming channel:', error);
             alert('Error renaming channel. Please try again.');
+        }
+    };
+
+    // Handle channel deletion
+    const deleteChannel = async (channelName) => {
+        if (!hasPermission(auth.currentUser, 'delete_channels')) {
+            alert('You do not have permission to delete channels.');
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete the channel "#${channelName}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            // Remove channel from channels array
+            const updatedChannels = channels.filter(channel => channel.name !== channelName);
+            setChannels(updatedChannels);
+            await saveChannels(updatedChannels);
+            
+            // If this was the selected channel, switch to general
+            if (selectedChannel === channelName) {
+                setSelectedChannel('general');
+            }
+            
+            console.log(`Deleted channel: ${channelName}`);
+        } catch (error) {
+            console.error('Error deleting channel:', error);
+            alert('Error deleting channel. Please try again.');
+        }
+    };
+
+    // Handle channel context menu actions
+    const handleChannelContextAction = (action) => {
+        if (!selectedChannelName) return;
+        
+        setShowChannelContextMenu(false);
+        
+        if (action === 'rename') {
+            setEditingChannel(selectedChannelName);
+            setEditingChannelName(selectedChannelName);
+        } else if (action === 'delete') {
+            deleteChannel(selectedChannelName);
         }
     };
 
@@ -954,61 +1000,6 @@ function DiscordLayout() {
         }
     };
 
-    // Delete channel
-    const deleteChannel = async (channelName) => {
-        if (!hasPermission(auth.currentUser, 'delete_channels')) {
-            alert('You do not have permission to delete channels');
-            return;
-        }
-        
-        // No default channels to protect
-        
-        if (!window.confirm(`Are you sure you want to delete #${channelName}? This action cannot be undone.`)) {
-            return;
-        }
-        
-        try {
-            // Remove channel from local state
-            const newChannels = channels.filter(ch => ch.name !== channelName);
-            setChannels(newChannels);
-            
-            // Save to Firestore
-            await saveChannels(newChannels);
-            
-            // If the deleted channel was selected, clear selection
-            if (selectedChannel === channelName) {
-                setSelectedChannel(null);
-            }
-            
-            // Remove from read channels
-            setReadChannels(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(channelName);
-                return newSet;
-            });
-            
-            // Remove from unread channels
-            setUnreadChannels(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(channelName);
-                return newSet;
-            });
-            
-            // Remove from mentioned channels
-            setMentionedChannels(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(channelName);
-                return newSet;
-            });
-            
-            // TODO: In a real app, you would also delete all messages from this channel from Firestore
-            // For now, we'll just remove it from the UI
-            
-        } catch (error) {
-            console.error('Error deleting channel:', error);
-            alert('Error deleting channel');
-        }
-    };
 
     // Create new category
     const createCategory = async () => {
@@ -1139,6 +1130,29 @@ function DiscordLayout() {
                 </div>
             )}
 
+            {/* Channel Context Menu */}
+            {showChannelContextMenu && (
+                <div 
+                    className="context-menu"
+                    style={{
+                        position: 'fixed',
+                        left: channelContextPosition.x,
+                        top: channelContextPosition.y,
+                        zIndex: 1000
+                    }}
+                    onMouseLeave={() => setShowChannelContextMenu(false)}
+                >
+                    <div className="context-menu-item" onClick={() => handleChannelContextAction('rename')}>
+                        Rename Channel
+                    </div>
+                    {hasPermission(auth.currentUser, 'delete_channels') && (
+                        <div className="context-menu-item danger" onClick={() => handleChannelContextAction('delete')}>
+                            Delete Channel
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Channel Sidebar */}
             <div className="channel-sidebar">
                 <div className="server-header">
@@ -1184,6 +1198,12 @@ function DiscordLayout() {
                                                 key={channel.name}
                                                 className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''} ${draggedChannel?.name === channel.name ? 'dragging' : ''}`}
                                                 onClick={() => setSelectedChannel(channel.name)}
+                                                onContextMenu={(e) => {
+                                                    e.preventDefault();
+                                                    setChannelContextPosition({ x: e.clientX, y: e.clientY });
+                                                    setSelectedChannelName(channel.name);
+                                                    setShowChannelContextMenu(true);
+                                                }}
                                                 draggable
                                                 onDragStart={(e) => handleChannelDragStart(e, channel)}
                                                 onDoubleClick={() => {
@@ -1217,19 +1237,6 @@ function DiscordLayout() {
                                 )}
                                                 {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
                                     <span className="unread-indicator"></span>
-                                )}
-                                                {/* Delete Channel Button - Only for Admins */}
-                                                {hasPermission(auth.currentUser, 'delete_channels') && (
-                                                    <button 
-                                                        className="delete-channel-btn"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            deleteChannel(channel.name);
-                                                        }}
-                                                        title="Delete Channel"
-                                                    >
-                                                        ×
-                                                    </button>
                                 )}
                             </div>
                                         ))}
