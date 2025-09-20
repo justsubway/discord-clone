@@ -1041,6 +1041,7 @@ function ChatRoom({ channel, onUserClick }) {
             ? `Guest ${guestCode || 'XXXX'}` 
             : (displayName || 'Anonymous');
 
+        const userRole = getUserRole(auth.currentUser);
         const messageData = {
             text: formValue,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1048,7 +1049,11 @@ function ChatRoom({ channel, onUserClick }) {
             photoURL,
             displayName: displayNameWithCode,
             channel: channel || 'general',
-            guestCode: guestCode || null
+            guestCode: guestCode || null,
+            role: userRole.name,
+            roleLevel: userRole.level,
+            roleColor: userRole.color,
+            roleIcon: userRole.icon
         };
 
         console.log('Message data to send:', messageData);
@@ -1222,7 +1227,7 @@ const isUserMentioned = (messageText, currentUser) => {
 
 function ChatMessage({ message, onUserClick }) {
     // console.log('Rendering ChatMessage:', message);
-    const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
+    const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions, role, roleColor, roleIcon } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -1435,6 +1440,7 @@ function ChatMessage({ message, onUserClick }) {
                 <div className="message-header">
                     <span 
                         className={`message-author ${guestCode ? 'guest' : ''} clickable`}
+                        style={{ color: roleColor || '#dcddde' }}
                         onClick={(e) => {
                             if (onUserClick) {
                                 onUserClick({
@@ -1447,6 +1453,7 @@ function ChatMessage({ message, onUserClick }) {
                             }
                         }}
                     >
+                        {roleIcon && role !== 'User' && `${roleIcon} `}
                         {getDisplayName()}
                     </span>
                     <span className="message-timestamp">

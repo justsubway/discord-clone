@@ -1118,6 +1118,8 @@ html, body {
   overflow: hidden;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
   border: 1px solid #40444b;
+  display: flex;
+  flex-direction: column;
 }
 
 .profile-modal-header {
@@ -1159,8 +1161,9 @@ html, body {
 
 .profile-modal-content {
   padding: 0;
-  max-height: calc(90vh - 140px);
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .profile-modal-loading {
