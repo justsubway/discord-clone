@@ -4,6 +4,7 @@ import './App.css';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
+import 'firebase/compat/storage';
 
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore';
@@ -19,6 +20,7 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
+const storage = firebase.storage();
 
 function App() {
     const [user] = useAuthState(auth);
@@ -145,6 +147,10 @@ function DiscordLayout() {
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
     const [readChannels, setReadChannels] = useState(new Set(['general'])); // Start with general as read
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showUserPreview, setShowUserPreview] = useState(null);
+    const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
+    const [members, setMembers] = useState([]);
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
@@ -233,6 +239,26 @@ function DiscordLayout() {
         setUnreadChannels(newUnreadChannels);
         setMentionedChannels(newMentionedChannels);
     }, [indicatorMessages, readChannels, auth.currentUser]);
+
+    // Extract unique members from messages
+    React.useEffect(() => {
+        if (!indicatorMessages) return;
+        
+        const memberMap = new Map();
+        indicatorMessages.forEach(msg => {
+            if (msg.uid && msg.displayName) {
+                memberMap.set(msg.uid, {
+                    uid: msg.uid,
+                    displayName: msg.displayName,
+                    photoURL: msg.photoURL,
+                    guestCode: msg.guestCode,
+                    isAnonymous: msg.guestCode ? true : false
+                });
+            }
+        });
+        
+        setMembers(Array.from(memberMap.values()));
+    }, [indicatorMessages]);
     
     return (
         <>
@@ -292,6 +318,7 @@ function DiscordLayout() {
                 </div>
                 
                 <div className="channel-sidebar-footer">
+                    <UserProfileButton onClick={() => setShowProfileModal(true)} />
                     <SignOut />
                 </div>
             </div>
@@ -303,13 +330,68 @@ function DiscordLayout() {
                     <span className="channel-description">General discussion</span>
                 </div>
                 
-                <ChatRoom channel={selectedChannel} />
+                <ChatRoom 
+                    channel={selectedChannel} 
+                    onUserClick={(user, event) => {
+                        const rect = event.target.getBoundingClientRect();
+                        setPreviewPosition({ x: rect.right + 10, y: rect.top });
+                        setShowUserPreview(user);
+                    }}
+                />
             </div>
+
+            {/* Members Sidebar */}
+            <div className="members-sidebar">
+                <div className="members-header">
+                    <span>Members — {members.length}</span>
+                </div>
+                <div className="members-list">
+                    {members.map(member => (
+                        <div 
+                            key={member.uid}
+                            className="member-item"
+                            onClick={(e) => {
+                                const rect = e.target.getBoundingClientRect();
+                                setPreviewPosition({ x: rect.left - 300, y: rect.top });
+                                setShowUserPreview(member);
+                            }}
+                        >
+                            <img 
+                                className="member-avatar"
+                                src={member.photoURL || (member.guestCode ? 
+                                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.guestCode}&backgroundColor=5865f2&textColor=ffffff` :
+                                    'https://api.adorable.io/avatars/23/abott@adorable.png'
+                                )}
+                                alt={member.displayName}
+                            />
+                            <span className={`member-name ${member.isAnonymous ? 'guest' : ''}`}>
+                                {member.displayName}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Profile Modal */}
+            {showProfileModal && (
+                <ProfileModal 
+                    onClose={() => setShowProfileModal(false)} 
+                />
+            )}
+
+            {/* User Preview Modal */}
+            {showUserPreview && (
+                <UserPreviewModal 
+                    user={showUserPreview}
+                    position={previewPosition}
+                    onClose={() => setShowUserPreview(null)}
+                />
+            )}
         </>
     );
 }
 
-function ChatRoom({ channel }) {
+function ChatRoom({ channel, onUserClick }) {
     const dummy = useRef();
     const messagesContainerRef = useRef();
     const messagesRef = firestore.collection('messages');
@@ -532,7 +614,7 @@ function ChatRoom({ channel }) {
         <>
             <div className="messages-container" ref={messagesContainerRef}>
                 {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} />)
+                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
                 ) : (
                     <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
                         <p>No messages in #{channel} yet</p>
@@ -650,7 +732,7 @@ const isUserMentioned = (messageText, currentUser) => {
     return isMentioned;
 };
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, onUserClick }) {
     // console.log('Rendering ChatMessage:', message);
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
@@ -860,7 +942,20 @@ function ChatMessage({ message }) {
             />
             <div className="message-content">
                 <div className="message-header">
-                    <span className={`message-author ${guestCode ? 'guest' : ''}`}>
+                    <span 
+                        className={`message-author ${guestCode ? 'guest' : ''} clickable`}
+                        onClick={(e) => {
+                            if (onUserClick) {
+                                onUserClick({
+                                    uid,
+                                    displayName: getDisplayName(),
+                                    photoURL: getAvatar(),
+                                    guestCode,
+                                    isAnonymous: !!guestCode
+                                }, e);
+                            }
+                        }}
+                    >
                         {getDisplayName()}
                     </span>
                     <span className="message-timestamp">
@@ -981,6 +1076,468 @@ function ChatMessage({ message }) {
             )}
         </div>
     )
+}
+
+function UserProfileButton({ onClick }) {
+    const [user] = useAuthState(auth);
+    const [userProfile, setUserProfile] = useState(null);
+    
+    // Get user profile data
+    React.useEffect(() => {
+        if (!user) return;
+        
+        const getUserProfile = async () => {
+            try {
+                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                const profileDoc = await profileRef.get();
+                
+                if (profileDoc.exists) {
+                    setUserProfile(profileDoc.data());
+                } else {
+                    // Create default profile
+                    const defaultProfile = {
+                        username: user.displayName || 'User',
+                        aboutMe: '',
+                        profilePicture: user.photoURL || '',
+                        banner: '',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await profileRef.set(defaultProfile);
+                    setUserProfile(defaultProfile);
+                }
+            } catch (error) {
+                console.error('Error getting user profile:', error);
+            }
+        };
+        
+        getUserProfile();
+    }, [user]);
+    
+    const getDisplayName = () => {
+        if (userProfile?.username) return userProfile.username;
+        if (user?.isAnonymous) {
+            const guestCode = localStorage.getItem('guestCode');
+            return `Guest ${guestCode || 'XXXX'}`;
+        }
+        return user?.displayName || 'User';
+    };
+    
+    const getAvatar = () => {
+        if (userProfile?.profilePicture) return userProfile.profilePicture;
+        if (user?.photoURL) return user.photoURL;
+        if (user?.isAnonymous) {
+            const guestCode = localStorage.getItem('guestCode');
+            return `https://api.dicebear.com/7.x/avataaars/svg?seed=${guestCode}&backgroundColor=5865f2&textColor=ffffff`;
+        }
+        return 'https://api.adorable.io/avatars/23/abott@adorable.png';
+    };
+    
+    return (
+        <button className="user-profile-button" onClick={onClick} title="User Profile">
+            <img 
+                className="user-profile-avatar" 
+                src={getAvatar()} 
+                alt="Profile"
+            />
+            <div className="user-profile-info">
+                <span className="user-profile-name">{getDisplayName()}</span>
+                <span className="user-profile-status">Online</span>
+            </div>
+        </button>
+    );
+}
+
+function ProfileModal({ onClose }) {
+    const [user] = useAuthState(auth);
+    const [userProfile, setUserProfile] = useState({
+        username: '',
+        aboutMe: '',
+        profilePicture: '',
+        banner: ''
+    });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const fileInputRef = useRef(null);
+    const bannerInputRef = useRef(null);
+    
+    // Load user profile data
+    React.useEffect(() => {
+        if (!user) return;
+        
+        const loadUserProfile = async () => {
+            try {
+                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                const profileDoc = await profileRef.get();
+                
+                if (profileDoc.exists) {
+                    const data = profileDoc.data();
+                    setUserProfile({
+                        username: data.username || user.displayName || '',
+                        aboutMe: data.aboutMe || '',
+                        profilePicture: data.profilePicture || user.photoURL || '',
+                        banner: data.banner || ''
+                    });
+                } else {
+                    // Set default values
+                    setUserProfile({
+                        username: user.displayName || '',
+                        aboutMe: '',
+                        profilePicture: user.photoURL || '',
+                        banner: ''
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading user profile:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        loadUserProfile();
+    }, [user]);
+    
+    // Handle image upload
+    const handleImageUpload = async (file, type) => {
+        if (!file || !user) return;
+        
+        setUploadingImage(true);
+        try {
+            const fileExtension = file.name.split('.').pop();
+            const fileName = `${user.uid}_${type}_${Date.now()}.${fileExtension}`;
+            const storageRef = storage.ref().child(`profile-images/${fileName}`);
+            
+            // Add upload progress tracking
+            const uploadTask = storageRef.put(file);
+            
+            uploadTask.on('state_changed', 
+                (snapshot) => {
+                    // Progress tracking (optional)
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    console.log(`Upload is ${progress}% done`);
+                },
+                (error) => {
+                    console.error('Upload error:', error);
+                    alert('Error uploading image. Please try again.');
+                    setUploadingImage(false);
+                },
+                async () => {
+                    try {
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        setUserProfile(prev => ({
+                            ...prev,
+                            [type]: downloadURL
+                        }));
+                        setUploadingImage(false);
+                    } catch (error) {
+                        console.error('Error getting download URL:', error);
+                        alert('Error getting image URL. Please try again.');
+                        setUploadingImage(false);
+                    }
+                }
+            );
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            alert('Error uploading image. Please try again.');
+            setUploadingImage(false);
+        }
+    };
+    
+    // Handle profile save
+    const handleSaveProfile = async () => {
+        if (!user) return;
+        
+        setSaving(true);
+        try {
+            const profileRef = firestore.collection('userProfiles').doc(user.uid);
+            await profileRef.set({
+                username: userProfile.username,
+                aboutMe: userProfile.aboutMe,
+                profilePicture: userProfile.profilePicture,
+                banner: userProfile.banner,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            onClose();
+        } catch (error) {
+            console.error('Error saving profile:', error);
+            alert('Error saving profile. Please try again.');
+        } finally {
+            setSaving(false);
+        }
+    };
+    
+    // Handle input changes
+    const handleInputChange = (field, value) => {
+        setUserProfile(prev => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+    
+    if (loading) {
+        return (
+            <div className="profile-modal-overlay">
+                <div className="profile-modal">
+                    <div className="profile-modal-loading">
+                        <div className="loading-spinner"></div>
+                        <p>Loading profile...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="profile-modal-overlay" onClick={onClose}>
+            <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="profile-modal-header">
+                    <h2>User Profile</h2>
+                    <button className="profile-modal-close" onClick={onClose}>
+                        ×
+                    </button>
+                </div>
+                
+                <div className="profile-modal-content">
+                    {/* Banner Section */}
+                    <div className="profile-banner-section">
+                        <div 
+                            className="profile-banner"
+                            style={{
+                                backgroundImage: userProfile.banner 
+                                    ? `url(${userProfile.banner})` 
+                                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                            }}
+                        >
+                            <input
+                                ref={bannerInputRef}
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                    if (e.target.files[0]) {
+                                        handleImageUpload(e.target.files[0], 'banner');
+                                    }
+                                }}
+                            />
+                            <button 
+                                className="banner-upload-btn"
+                                onClick={() => bannerInputRef.current?.click()}
+                                disabled={uploadingImage}
+                            >
+                                {uploadingImage ? 'Uploading...' : 'Change Banner'}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Profile Picture Section */}
+                    <div className="profile-picture-section">
+                        <div className="profile-picture-container">
+                            <img 
+                                className="profile-picture"
+                                src={userProfile.profilePicture || 'https://api.adorable.io/avatars/100/abott@adorable.png'}
+                                alt="Profile"
+                            />
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                    if (e.target.files[0]) {
+                                        handleImageUpload(e.target.files[0], 'profilePicture');
+                                    }
+                                }}
+                            />
+                            <button 
+                                className="profile-picture-upload-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingImage}
+                            >
+                                📷
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Form Fields */}
+                    <div className="profile-form">
+                        <div className="profile-field">
+                            <label htmlFor="username">Username</label>
+                            <input
+                                id="username"
+                                type="text"
+                                value={userProfile.username}
+                                onChange={(e) => handleInputChange('username', e.target.value)}
+                                placeholder="Enter your username"
+                                maxLength={32}
+                            />
+                        </div>
+                        
+                        <div className="profile-field">
+                            <label htmlFor="aboutMe">About Me</label>
+                            <textarea
+                                id="aboutMe"
+                                value={userProfile.aboutMe}
+                                onChange={(e) => handleInputChange('aboutMe', e.target.value)}
+                                placeholder="Tell us about yourself..."
+                                maxLength={190}
+                                rows={4}
+                            />
+                            <div className="character-count">
+                                {userProfile.aboutMe.length}/190
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="profile-modal-footer">
+                    <button 
+                        className="profile-cancel-btn"
+                        onClick={onClose}
+                        disabled={saving}
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        className="profile-save-btn"
+                        onClick={handleSaveProfile}
+                        disabled={saving || uploadingImage}
+                    >
+                        {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function UserPreviewModal({ user, position, onClose }) {
+    const [userProfile, setUserProfile] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const modalRef = useRef(null);
+    
+    // Close modal when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (modalRef.current && !modalRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+    
+    // Load user profile data
+    React.useEffect(() => {
+        if (!user) return;
+        
+        const loadUserProfile = async () => {
+            try {
+                const profileRef = firestore.collection('userProfiles').doc(user.uid);
+                const profileDoc = await profileRef.get();
+                
+                if (profileDoc.exists) {
+                    setUserProfile(profileDoc.data());
+                } else {
+                    // Set default values
+                    setUserProfile({
+                        username: user.displayName,
+                        aboutMe: '',
+                        profilePicture: user.photoURL,
+                        banner: ''
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading user profile:', error);
+                setUserProfile({
+                    username: user.displayName,
+                    aboutMe: '',
+                    profilePicture: user.photoURL,
+                    banner: ''
+                });
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        loadUserProfile();
+    }, [user]);
+    
+    if (loading) {
+        return (
+            <div 
+                className="user-preview-modal"
+                style={{
+                    position: 'fixed',
+                    left: position.x,
+                    top: position.y,
+                    zIndex: 1001
+                }}
+            >
+                <div className="user-preview-loading">
+                    <div className="loading-spinner"></div>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div 
+            ref={modalRef}
+            className="user-preview-modal"
+            style={{
+                position: 'fixed',
+                left: position.x,
+                top: position.y,
+                zIndex: 1001
+            }}
+        >
+            <div className="user-preview-content">
+                {/* Banner */}
+                <div 
+                    className="user-preview-banner"
+                    style={{
+                        backgroundImage: userProfile?.banner 
+                            ? `url(${userProfile.banner})` 
+                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    }}
+                />
+                
+                {/* Profile Picture */}
+                <div className="user-preview-picture-section">
+                    <img 
+                        className="user-preview-avatar"
+                        src={userProfile?.profilePicture || user.photoURL || 'https://api.adorable.io/avatars/100/abott@adorable.png'}
+                        alt={user.displayName}
+                    />
+                </div>
+                
+                {/* User Info */}
+                <div className="user-preview-info">
+                    <h3 className="user-preview-name">
+                        {userProfile?.username || user.displayName}
+                    </h3>
+                    <div className="user-preview-status">
+                        <div className="status-indicator online"></div>
+                        <span>Online</span>
+                    </div>
+                    {userProfile?.aboutMe && (
+                        <p className="user-preview-bio">
+                            {userProfile.aboutMe}
+                        </p>
+                    )}
+                    {user.isAnonymous && (
+                        <div className="user-preview-guest-badge">
+                            Guest User
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function SignOut() {
