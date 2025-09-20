@@ -4,8 +4,7 @@ import './App.css';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
-import 'firebase/compat/storage';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+// Firebase Storage removed - using base64 encoding instead
 
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData, useCollection } from 'react-firebase-hooks/firestore';
@@ -21,8 +20,7 @@ firebase.initializeApp({
 
 const auth = firebase.auth();
 const firestore = firebase.firestore();
-const storage = firebase.storage();
-const storageV9 = getStorage();
+// Firebase Storage removed - using base64 encoding instead
 
 // Simple event system for profile updates
 const profileUpdateListeners = new Set();
@@ -2008,7 +2006,7 @@ function ProfileModal({ onClose }) {
         loadUserProfile();
     }, [user]);
     
-    // Handle image upload
+    // Handle image upload (base64 encoding - no Firebase Storage needed)
     const handleImageUpload = async (file, type) => {
         if (!file || !user) {
             console.log('No file or user:', { file: !!file, user: !!user });
@@ -2022,65 +2020,39 @@ function ProfileModal({ onClose }) {
             return;
         }
         
-        // Validate file size (max 5MB)
-        const maxSize = 5 * 1024 * 1024; // 5MB
+        // Validate file size (max 2MB for base64 encoding)
+        const maxSize = 2 * 1024 * 1024; // 2MB
         if (file.size > maxSize) {
-            alert('Image file is too large. Please select a file smaller than 5MB.');
+            alert('Image file is too large. Please select a file smaller than 2MB.');
             return;
         }
         
-        console.log('Starting upload:', { fileName: file.name, fileSize: file.size, fileType: file.type });
+        console.log('Starting image processing:', { fileName: file.name, fileSize: file.size, fileType: file.type });
         setUploadingImage(true);
         
         try {
-            const fileExtension = file.name.split('.').pop();
-            const fileName = `${user.uid}_${type}_${Date.now()}.${fileExtension}`;
-            
-            console.log('Uploading to:', `profile-images/${fileName}`);
-            
-            // Try using the compat storage first (might work better with CORS)
-            const storageRef = storage.ref().child(`profile-images/${fileName}`);
-            
-            // Upload the file using compat API
-            const uploadTask = storageRef.put(file);
-            
-            // Wait for upload to complete
-            await new Promise((resolve, reject) => {
-                uploadTask.on('state_changed', 
-                    (snapshot) => {
-                        // Progress tracking
-                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                        console.log(`Upload is ${progress}% done`);
-                    },
-                    (error) => {
-                        console.error('Upload error:', error);
-                        reject(error);
-                    },
-                    async () => {
-                        try {
-                            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                            console.log('Got download URL:', downloadURL);
-                            
-                            // Update the profile state
-                            setUserProfile(prev => ({
-                                ...prev,
-                                [type]: downloadURL
-                            }));
-                            
-                            setUploadingImage(false);
-                            console.log('Image upload completed successfully');
-                            resolve();
-                        } catch (error) {
-                            console.error('Error getting download URL:', error);
-                            reject(error);
-                        }
-                    }
-                );
+            // Convert file to base64
+            const base64String = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
             });
             
+            console.log('Image converted to base64 successfully');
+            
+            // Update the profile state with base64 data
+            setUserProfile(prev => ({
+                ...prev,
+                [type]: base64String
+            }));
+            
+            setUploadingImage(false);
+            console.log('Image processing completed successfully');
+            
         } catch (error) {
-            console.error('Error uploading image:', error);
-            alert(`Error uploading image: ${error.message || 'Please try again.'}`);
+            console.error('Error processing image:', error);
+            alert(`Error processing image: ${error.message || 'Please try again.'}`);
             setUploadingImage(false);
         }
     };
@@ -2249,7 +2221,7 @@ function ProfileModal({ onClose }) {
                                 onClick={() => bannerInputRef.current?.click()}
                                 disabled={uploadingImage}
                             >
-                                {uploadingImage ? 'Uploading...' : 'Change Banner'}
+                                {uploadingImage ? 'Processing...' : 'Change Banner'}
                             </button>
                         </div>
                     </div>
