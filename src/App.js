@@ -1625,7 +1625,13 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(30)
         : messagesRef.orderBy('createdAt', 'desc').limit(30);
 
+    console.log('🔍 FIRESTORE QUERY - Server:', selectedServer?.name, 'ServerId:', selectedServer?.id);
+    console.log('🔍 FIRESTORE QUERY - Query:', query);
+
     const [messagesSnapshot, loading, error] = useCollection(query);
+    
+    console.log('🔍 FIRESTORE RESULT - Loading:', loading, 'Error:', error);
+    console.log('🔍 FIRESTORE RESULT - Snapshot docs:', messagesSnapshot?.docs?.length || 0);
     
     // Convert snapshot to data with IDs
     const messages = messagesSnapshot?.docs.map(doc => ({
@@ -1633,11 +1639,15 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         ...doc.data()
     })) || [];
     
-    // Debug: Log messages (reduced logging)
-    // console.log('Raw messages from Firestore:', messages.length, 'messages');
-    // if (messages.length > 0) {
-    //     console.log('Sample message:', messages[0]);
-    // }
+    // Debug: Log messages with comprehensive debugging
+    console.log('🔍 CHATROOM DEBUG - Channel:', channel, 'Server:', selectedServer?.name);
+    console.log('📊 Raw messages from Firestore:', messages.length, 'messages');
+    if (messages.length > 0) {
+        console.log('📝 Sample message:', messages[0]);
+        console.log('📝 All message IDs:', messages.map(m => m.id));
+    } else {
+        console.log('❌ NO MESSAGES FOUND - This is the problem!');
+    }
     
     // Debug: Check if messages have IDs (reduced logging)
     // React.useEffect(() => {
@@ -1893,12 +1903,13 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
             roleIcon: userRole.icon
         };
 
-        console.log('Message data to send:', messageData);
+        console.log('📤 SENDING MESSAGE - Data:', messageData);
+        console.log('📤 SENDING MESSAGE - ServerId:', selectedServer?.id, 'Channel:', channel);
 
         try {
             const docRef = await messagesRef.add(messageData);
-            console.log('✅ Message sent successfully with ID:', docRef.id);
-            console.log('📝 Message data:', messageData);
+            console.log('✅ MESSAGE SENT SUCCESSFULLY - ID:', docRef.id);
+            console.log('✅ MESSAGE SENT SUCCESSFULLY - Data:', messageData);
             
             // Update user's last seen time
             await saveUserToFirestore(auth.currentUser, {
@@ -1921,26 +1932,50 @@ function ChatRoom({ channel, selectedServer, onUserClick }) {
         
         const filtered = messages
             .filter(msg => {
+                console.log('🔍 FILTERING MESSAGE:', {
+                    id: msg.id,
+                    msgChannel: msg.channel,
+                    currentChannel: channel,
+                    serverId: msg.serverId,
+                    selectedServerId: selectedServer?.id
+                });
+                
                 // If message has channel property, filter by it
                 if (msg.channel) {
-                    return msg.channel === channel;
+                    const matches = msg.channel === channel;
+                    console.log('🔍 CHANNEL MATCH:', matches, 'msg.channel:', msg.channel, 'channel:', channel);
+                    return matches;
                 }
                 // If message doesn't have channel property (old messages), show in general
-                return channel === 'general';
+                const isGeneral = channel === 'general';
+                console.log('🔍 GENERAL CHANNEL CHECK:', isGeneral, 'channel:', channel);
+                return isGeneral;
             })
             .reverse(); // Reverse to show oldest to newest (chronological order)
         
-        // console.log('Filtered messages for channel', channel, ':', filtered.length, 'messages');
+        console.log('🔍 FILTERED MESSAGES - Channel:', channel, 'Count:', filtered.length);
+        if (filtered.length > 0) {
+            console.log('✅ Filtered message IDs:', filtered.map(m => m.id));
+        } else {
+            console.log('❌ NO FILTERED MESSAGES - Check channel filtering logic!');
+        }
         return filtered;
     }, [messages, channel]);
 
     // console.log('Filtered messages count:', filteredMessages.length);
 
+    // Debug: Log what we're about to render
+    console.log('🎨 RENDERING - About to render', filteredMessages.length, 'messages');
+    console.log('🎨 RENDERING - Messages to render:', filteredMessages.map(m => ({ id: m.id, text: m.text?.substring(0, 50) })));
+
     return (
         <>
             <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
                 {filteredMessages.length > 0 ? (
-                    filteredMessages.map(msg => <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />)
+                    filteredMessages.map(msg => {
+                        console.log('🎨 RENDERING MESSAGE:', msg.id, msg.text?.substring(0, 30));
+                        return <ChatMessage key={msg.id} message={msg} onUserClick={onUserClick} />;
+                    })
                 ) : (
                     <div style={{color: '#8e9297', padding: '20px', textAlign: 'center'}}>
                         <p>No messages in #{channel} yet</p>
@@ -2086,7 +2121,7 @@ const isUserMentioned = async (messageText, currentUser) => {
 };
 
 const ChatMessage = React.memo(({ message, onUserClick }) => {
-    // console.log('Rendering ChatMessage:', message);
+    console.log('🎨 ChatMessage RENDERED:', message.id, message.text?.substring(0, 30));
     const { text, uid, photoURL, displayName, createdAt, guestCode, id, reactions, role, roleColor, roleIcon } = message;
     const messageClass = uid === auth.currentUser?.uid ? 'sent' : 'received';
     const [showReactionPicker, setShowReactionPicker] = useState(false);
