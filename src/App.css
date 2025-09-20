@@ -64,6 +64,17 @@ html, body {
   border-radius: 16px;
 }
 
+.server-icon.add-server {
+  background-color: #43b581;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.server-icon.add-server:hover {
+  background-color: #3aa374;
+}
+
 /* Channel Sidebar */
 .channel-sidebar {
   width: 240px;
@@ -1021,6 +1032,100 @@ html, body {
 
 .p-4 {
   padding: 16px;
+}
+
+/* Create Server Modal */
+.create-server-modal {
+  max-width: 500px;
+  width: 90vw;
+}
+
+.create-server-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #b9bbbe;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.form-group input,
+.form-group textarea {
+  background-color: #40444b;
+  border: 1px solid #202225;
+  border-radius: 8px;
+  padding: 12px;
+  color: #dcddde;
+  font-size: 16px;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #5865f2;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.cancel-btn {
+  background-color: transparent;
+  border: 1px solid #5865f2;
+  color: #5865f2;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background-color: #5865f2;
+  color: white;
+}
+
+.create-btn {
+  background-color: #5865f2;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.create-btn:hover {
+  background-color: #4752c4;
+}
+
+.create-btn:disabled {
+  background-color: #4f545c;
+  cursor: not-allowed;
 }
 
 .text-sm {

@@ -141,7 +141,7 @@ function SignIn() {
     const signInWithGoogle = async () => {
         setIsLoading(true);
         try {
-            const provider = new firebase.auth.GoogleAuthProvider();
+        const provider = new firebase.auth.GoogleAuthProvider();
             const result = await auth.signInWithPopup(provider);
             
             // Save user to Firestore
@@ -259,6 +259,7 @@ function SignIn() {
 }
 
 function DiscordLayout() {
+    const [selectedServer, setSelectedServer] = useState(null);
     const [selectedChannel, setSelectedChannel] = useState(null);
     const [unreadChannels, setUnreadChannels] = useState(new Set());
     const [mentionedChannels, setMentionedChannels] = useState(new Set());
@@ -266,15 +267,21 @@ function DiscordLayout() {
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [showUserPreview, setShowUserPreview] = useState(null);
     const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
-      const [members, setMembers] = useState([]);
-      const [channels, setChannels] = useState([]); // Start with no channels
-      const [channelsLoaded, setChannelsLoaded] = useState(false);
-      const [showCreateChannel, setShowCreateChannel] = useState(false);
-      const [newChannelName, setNewChannelName] = useState('');
-      const [newChannelCategory, setNewChannelCategory] = useState('General');
-      const [showCreateCategory, setShowCreateCategory] = useState(false);
-      const [newCategoryName, setNewCategoryName] = useState('');
-      const [categories, setCategories] = useState(['General', 'Gaming', 'Music', 'Art']);
+    const [members, setMembers] = useState([]);
+    const [channels, setChannels] = useState([]); // Start with no channels
+    const [channelsLoaded, setChannelsLoaded] = useState(false);
+    const [showCreateChannel, setShowCreateChannel] = useState(false);
+    const [newChannelName, setNewChannelName] = useState('');
+    const [newChannelCategory, setNewChannelCategory] = useState('General');
+    const [showCreateCategory, setShowCreateCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [categories, setCategories] = useState(['General', 'Gaming', 'Music', 'Art']);
+    
+    // Server-related state
+    const [servers, setServers] = useState([]);
+    const [showCreateServer, setShowCreateServer] = useState(false);
+    const [newServerName, setNewServerName] = useState('');
+    const [newServerDescription, setNewServerDescription] = useState('');
     
     // Function to get the correct avatar for a member
     const getMemberAvatar = (member) => {
@@ -292,10 +299,87 @@ function DiscordLayout() {
         return 'https://api.adorable.io/avatars/32/abott@adorable.png';
     };
 
-    // Load channels from Firestore
-    const loadChannels = async () => {
+    // Create the initial SuperChat server if it doesn't exist
+    const createInitialServer = async () => {
         try {
-            const channelsRef = firestore.collection('channels').doc('main');
+            const serversRef = firestore.collection('servers');
+            const superChatQuery = serversRef.where('name', '==', 'SuperChat Server');
+            const superChatSnapshot = await superChatQuery.get();
+            
+            if (superChatSnapshot.empty) {
+                // Create the initial SuperChat server
+                const serverData = {
+                    name: 'SuperChat Server',
+                    description: 'The main SuperChat server where everyone can chat',
+                    ownerId: 'system',
+                    members: [], // Will be populated as users join
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                const serverRef = await serversRef.add(serverData);
+                
+                // Create default channels for SuperChat server
+                const defaultChannels = [
+                    { name: 'general', category: 'General' },
+                    { name: 'random', category: 'General' }
+                ];
+                
+                const channelsData = {
+                    channels: defaultChannels,
+                    categories: ['General', 'Gaming', 'Music', 'Art'],
+                    serverId: serverRef.id,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                await firestore.collection('channels').doc(serverRef.id).set(channelsData);
+                
+                console.log('Initial SuperChat server created:', serverRef.id);
+            }
+        } catch (error) {
+            console.error('Error creating initial server:', error);
+        }
+    };
+
+    // Load servers from Firestore
+    const loadServers = async () => {
+        try {
+            const serversRef = firestore.collection('servers');
+            const serversSnapshot = await serversRef.get();
+            
+            const serversData = [];
+            serversSnapshot.forEach(doc => {
+                serversData.push({
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            
+            // Sort servers by creation date (newest first)
+            serversData.sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate());
+            
+            setServers(serversData);
+            
+            // If no server is selected and we have servers, select the first one
+            if (!selectedServer && serversData.length > 0) {
+                setSelectedServer(serversData[0]);
+            }
+        } catch (error) {
+            console.error('Error loading servers:', error);
+        }
+    };
+
+    // Load channels from Firestore for the selected server
+    const loadChannels = async () => {
+        if (!selectedServer) {
+            setChannels([]);
+            setChannelsLoaded(true);
+            return;
+        }
+        
+        try {
+            const channelsRef = firestore.collection('channels').doc(selectedServer.id);
             const channelsDoc = await channelsRef.get();
             
             if (channelsDoc.exists) {
@@ -303,11 +387,12 @@ function DiscordLayout() {
                 setChannels(channelsData.channels || []);
                 setCategories(channelsData.categories || ['General', 'Gaming', 'Music', 'Art']);
             } else {
-                // Create empty channels document
+                // Create empty channels document for this server
                 const defaultCategories = ['General', 'Gaming', 'Music', 'Art'];
                 await channelsRef.set({
                     channels: [],
                     categories: defaultCategories,
+                    serverId: selectedServer.id,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
@@ -321,10 +406,62 @@ function DiscordLayout() {
         }
     };
 
+    // Create a new server
+    const createServer = async () => {
+        if (!newServerName.trim()) {
+            alert('Please enter a server name');
+            return;
+        }
+
+        try {
+            const serverData = {
+                name: newServerName.trim(),
+                description: newServerDescription.trim(),
+                ownerId: auth.currentUser?.uid || 'anonymous',
+                members: [auth.currentUser?.uid || 'anonymous'], // Auto-add creator
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            const serverRef = await firestore.collection('servers').add(serverData);
+            
+            // Create default channels for the new server
+            const defaultChannels = [
+                { name: 'general', category: 'General' },
+                { name: 'random', category: 'General' }
+            ];
+            
+            const channelsData = {
+                channels: defaultChannels,
+                categories: ['General', 'Gaming', 'Music', 'Art'],
+                serverId: serverRef.id,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            
+            await firestore.collection('channels').doc(serverRef.id).set(channelsData);
+            
+            // Reset form
+            setNewServerName('');
+            setNewServerDescription('');
+            setShowCreateServer(false);
+            
+            // Reload servers
+            await loadServers();
+            
+            console.log('Server created successfully:', serverRef.id);
+        } catch (error) {
+            console.error('Error creating server:', error);
+            alert('Error creating server. Please try again.');
+        }
+    };
+
     // Save channels to Firestore
     const saveChannels = async (newChannels, newCategories = null) => {
+        if (!selectedServer) return;
+        
         try {
-            const channelsRef = firestore.collection('channels').doc('main');
+            const channelsRef = firestore.collection('channels').doc(selectedServer.id);
             const updateData = {
                 channels: newChannels,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -341,7 +478,9 @@ function DiscordLayout() {
     
     // Track unread messages and mentions - use a separate query to avoid conflicts
     const messagesRef = firestore.collection('messages');
-    const indicatorQuery = messagesRef.orderBy('createdAt', 'desc').limit(100);
+    const indicatorQuery = selectedServer 
+        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(100)
+        : messagesRef.orderBy('createdAt', 'desc').limit(100);
     const [indicatorSnapshot] = useCollection(indicatorQuery);
     
     const indicatorMessages = indicatorSnapshot?.docs.map(doc => ({
@@ -352,11 +491,11 @@ function DiscordLayout() {
     // Mark channel as read when switching to it
     React.useEffect(() => {
         if (selectedChannel) {
-            setReadChannels(prev => {
-                const newSet = new Set(prev);
-                newSet.add(selectedChannel);
-                return newSet;
-            });
+        setReadChannels(prev => {
+            const newSet = new Set(prev);
+            newSet.add(selectedChannel);
+            return newSet;
+        });
             
             // Immediately clear unread and mention indicators for this channel
             setUnreadChannels(prev => {
@@ -428,8 +567,8 @@ function DiscordLayout() {
                     const mentionPattern = new RegExp(`@${escapedName}(?!\\S)`, 'i');
                     const isMentioned = mentionPattern.test(msg.text);
                     
-                    if (isMentioned) {
-                        newMentionedChannels.add(channel);
+                if (isMentioned) {
+                    newMentionedChannels.add(channel);
                     }
                 }
             }
@@ -558,8 +697,17 @@ function DiscordLayout() {
 
     React.useEffect(() => {
         loadAllUsers();
-        loadChannels();
+        createInitialServer().then(() => {
+            loadServers();
+        });
     }, []); // Empty dependency array - only run once
+
+    // Load channels when selected server changes
+    React.useEffect(() => {
+        if (selectedServer) {
+            loadChannels();
+        }
+    }, [selectedServer]);
 
     // Listen for profile updates
     React.useEffect(() => {
@@ -733,8 +881,23 @@ function DiscordLayout() {
         <>
             {/* Server Sidebar */}
             <div className="server-sidebar">
-                <div className="server-icon active">💬</div>
-                <div className="server-icon">+</div>
+                {servers.map((server) => (
+                    <div 
+                        key={server.id}
+                        className={`server-icon ${selectedServer?.id === server.id ? 'active' : ''}`}
+                        onClick={() => setSelectedServer(server)}
+                        title={server.name}
+                    >
+                        {server.name.charAt(0).toUpperCase()}
+                    </div>
+                ))}
+                <div 
+                    className="server-icon add-server"
+                    onClick={() => setShowCreateServer(true)}
+                    title="Add Server"
+                >
+                    +
+                </div>
             </div>
 
             {/* Channel Sidebar */}
@@ -744,9 +907,9 @@ function DiscordLayout() {
                         <img 
                             className="server-header-logo" 
                             src="/SuperChat.png" 
-                            alt="SuperChat Logo"
+                            alt="Server Logo"
                         />
-                        <span>SuperChat Server</span>
+                        <span>{selectedServer?.name || 'Select a Server'}</span>
                     </div>
                 </div>
                 
@@ -768,25 +931,25 @@ function DiscordLayout() {
                             
                             return (
                                 <div key={category} className="category">
-                                    <div className="category-header">
+                        <div className="category-header">
                                         <span className="category-name">{category}</span>
                                         <span className="category-count">{categoryChannels.length}</span>
-                                    </div>
-                                    <div className="channel-list">
+                        </div>
+                        <div className="channel-list">
                                         {categoryChannels.map(channel => (
-                                            <div 
+                            <div 
                                                 key={channel.name}
                                                 className={`channel ${selectedChannel === channel.name ? 'active' : ''} ${selectedChannel !== channel.name && unreadChannels.has(channel.name) ? 'unread' : ''} ${selectedChannel !== channel.name && mentionedChannels.has(channel.name) ? 'mentioned' : ''}`}
                                                 onClick={() => setSelectedChannel(channel.name)}
-                                            >
-                                                <span className="channel-icon">#</span>
+                            >
+                                <span className="channel-icon">#</span>
                                                 <span className="channel-name">{channel.name}</span>
                                                 {selectedChannel !== channel.name && mentionedChannels.has(channel.name) && (
-                                                    <span className="mention-indicator">@</span>
-                                                )}
+                                    <span className="mention-indicator">@</span>
+                                )}
                                                 {selectedChannel !== channel.name && unreadChannels.has(channel.name) && !mentionedChannels.has(channel.name) && (
-                                                    <span className="unread-indicator"></span>
-                                                )}
+                                    <span className="unread-indicator"></span>
+                                )}
                                                 {/* Delete Channel Button - Only for Admins */}
                                                 {hasPermission(auth.currentUser, 'delete_channels') && (
                                                     <button 
@@ -799,8 +962,8 @@ function DiscordLayout() {
                                                     >
                                                         ×
                                                     </button>
-                                                )}
-                                            </div>
+                                )}
+                            </div>
                                         ))}
                                     </div>
                                 </div>
@@ -863,8 +1026,8 @@ function DiscordLayout() {
                                 </div>
                             )}
                         </div>
-                    )}
-                </div>
+                                )}
+                            </div>
                 
                 {/* Create Category Section - Only for moderators/admins */}
                 {hasPermission(auth.currentUser, 'create_channels') && (
@@ -905,10 +1068,10 @@ function DiscordLayout() {
                                     >
                                         Cancel
                                     </button>
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </div>
+                        )}
+                </div>
                 )}
                 
                 <div className="channel-sidebar-footer">
@@ -923,13 +1086,14 @@ function DiscordLayout() {
             <div className="main-content">
                 {selectedChannel ? (
                     <>
-                        <div className="chat-header">
-                            <span className="channel-name">#{selectedChannel}</span>
-                            <span className="channel-description">General discussion</span>
-                        </div>
-                        
+                <div className="chat-header">
+                    <span className="channel-name">#{selectedChannel}</span>
+                    <span className="channel-description">General discussion</span>
+                </div>
+                
                         <ChatRoom 
-                            channel={selectedChannel} 
+                            channel={selectedChannel}
+                            selectedServer={selectedServer}
                             onUserClick={(user, event) => {
                                 const rect = event.target.getBoundingClientRect();
                                 setPreviewPosition({ x: rect.right + 10, y: rect.top });
@@ -943,7 +1107,7 @@ function DiscordLayout() {
                         <div className="no-channel-selected-title">Welcome to SuperChat!</div>
                         <div className="no-channel-selected-description">
                             Select a channel from the sidebar to start chatting, or create a new channel to get started.
-                        </div>
+            </div>
                     </div>
                 )}
             </div>
@@ -1100,19 +1264,33 @@ function DiscordLayout() {
                     onClose={() => setShowUserPreview(null)}
                 />
             )}
+
+            {/* Create Server Modal */}
+            {showCreateServer && (
+                <CreateServerModal 
+                    onClose={() => setShowCreateServer(false)}
+                    onCreateServer={createServer}
+                    serverName={newServerName}
+                    setServerName={setNewServerName}
+                    serverDescription={newServerDescription}
+                    setServerDescription={setNewServerDescription}
+                />
+            )}
         </>
     );
 }
 
-function ChatRoom({ channel, onUserClick }) {
+function ChatRoom({ channel, selectedServer, onUserClick }) {
     const dummy = useRef();
     const messagesContainerRef = useRef();
     const messagesRef = firestore.collection('messages');
     
-    // Use proper query to get the most recent messages
+    // Use proper query to get the most recent messages for the selected server
     // Order by createdAt descending to get newest first, then limit to 50
     // Note: Firebase has a limit of 25 by default, but we can increase it
-    const query = messagesRef.orderBy('createdAt', 'desc').limit(50);
+    const query = selectedServer 
+        ? messagesRef.where('serverId', '==', selectedServer.id).orderBy('createdAt', 'desc').limit(50)
+        : messagesRef.orderBy('createdAt', 'desc').limit(50);
 
     const [messagesSnapshot, loading, error] = useCollection(query);
     
@@ -1250,10 +1428,10 @@ function ChatRoom({ channel, onUserClick }) {
         // Check if this new message mentions the current user
         if (latestMessage.text && latestMessage.text.includes('@') && latestMessage.uid !== currentUser.uid) {
             isUserMentioned(latestMessage.text, currentUser).then(isMentioned => {
-                if (isMentioned) {
-                    console.log('🔔 New mention detected! Playing sound immediately.');
-                    playMentionSound();
-                }
+            if (isMentioned) {
+                console.log('🔔 New mention detected! Playing sound immediately.');
+                playMentionSound();
+            }
             }).catch(error => {
                 console.error('Error checking mention:', error);
             });
@@ -1328,7 +1506,7 @@ function ChatRoom({ channel, onUserClick }) {
         console.log('Current channel:', channel);
 
         const { uid, photoURL, isAnonymous } = auth.currentUser;
-        
+
         // Get guest code if user is anonymous
         const guestCode = isAnonymous ? localStorage.getItem('guestCode') : null;
         
@@ -1354,7 +1532,7 @@ function ChatRoom({ channel, onUserClick }) {
         const displayNameWithCode = isAnonymous 
             ? (currentDisplayName || `Guest ${guestCode || 'XXXX'}`)
             : currentDisplayName;
-            
+
         console.log('User info:', { uid, photoURL, displayName: currentDisplayName, isAnonymous });
 
         const userRole = getUserRole(auth.currentUser);
@@ -1365,6 +1543,7 @@ function ChatRoom({ channel, onUserClick }) {
             photoURL,
             displayName: displayNameWithCode,
             channel: channel || 'general',
+            serverId: selectedServer?.id || null,
             guestCode: guestCode || null,
             role: userRole.name,
             roleLevel: userRole.level,
@@ -1532,7 +1711,7 @@ const isUserMentioned = async (messageText, currentUser) => {
         
         // Fallback to Guest format if no custom username found
         if (!displayName) {
-            displayName = `Guest ${guestCode || 'XXXX'}`;
+        displayName = `Guest ${guestCode || 'XXXX'}`;
         }
     } else {
         displayName = currentUser.displayName || 'Anonymous';
@@ -1863,13 +2042,13 @@ function ChatMessage({ message, onUserClick }) {
                 {((uid === auth.currentUser?.uid) || hasPermission(auth.currentUser, 'delete_messages')) && !isEditing && (
                     <>
                         {uid === auth.currentUser?.uid && (
-                            <button 
-                                className="edit-message-btn"
-                                onClick={() => setIsEditing(true)}
-                                title="Edit Message"
-                            >
-                                ✏️
-                            </button>
+                        <button 
+                            className="edit-message-btn"
+                            onClick={() => setIsEditing(true)}
+                            title="Edit Message"
+                        >
+                            ✏️
+                        </button>
                         )}
                         <button 
                             className="delete-message-btn"
@@ -2614,6 +2793,76 @@ function SignOut() {
             </svg>
         </button>
     )
+}
+
+function CreateServerModal({ onClose, onCreateServer, serverName, setServerName, serverDescription, setServerDescription }) {
+    const modalRef = useRef(null);
+    
+    // Close modal when clicking outside
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (modalRef.current && !modalRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onCreateServer();
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content create-server-modal" ref={modalRef}>
+                <div className="modal-header">
+                    <h2>Create Server</h2>
+                    <button className="modal-close" onClick={onClose}>×</button>
+                </div>
+                
+                <form onSubmit={handleSubmit} className="create-server-form">
+                    <div className="form-group">
+                        <label htmlFor="serverName">Server Name *</label>
+                        <input
+                            type="text"
+                            id="serverName"
+                            value={serverName}
+                            onChange={(e) => setServerName(e.target.value)}
+                            placeholder="Enter server name"
+                            maxLength={50}
+                            required
+                        />
+                    </div>
+                    
+                    <div className="form-group">
+                        <label htmlFor="serverDescription">Description (Optional)</label>
+                        <textarea
+                            id="serverDescription"
+                            value={serverDescription}
+                            onChange={(e) => setServerDescription(e.target.value)}
+                            placeholder="Enter server description"
+                            maxLength={200}
+                            rows={3}
+                        />
+                    </div>
+                    
+                    <div className="modal-actions">
+                        <button type="button" className="cancel-btn" onClick={onClose}>
+                            Cancel
+                        </button>
+                        <button type="submit" className="create-btn">
+                            Create Server
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 }
 
 export default App;
